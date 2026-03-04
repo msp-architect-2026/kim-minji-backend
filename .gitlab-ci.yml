@@ -4,14 +4,13 @@ stages:
 variables:
   IMAGE_NAME: gitlab.local:5050/root/kim-minji-backend
   IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  DOCKER_HOST: unix:///var/run/docker.sock
 
 build_and_push:
   stage: build
   tags:
     - arm64
     - docker
-  variables:
-    DOCKER_HOST: unix:///var/run/docker.sock
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD gitlab.local:5050
   script:
