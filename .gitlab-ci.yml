@@ -1,0 +1,30 @@
+stages:
+  - build
+  - push
+
+variables:
+  IMAGE_NAME: gitlab.local:5050/root/kim-minji-backend
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+build_and_push:
+  stage: build
+  tags:
+    - arm64
+    - docker
+  services:
+    - name: docker:24-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    DOCKER_OPTS: "--insecure-registry=gitlab.local:5050"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD gitlab.local:5050
+  script:
+    - docker build --platform linux/arm64 -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+    - docker push $IMAGE_NAME:latest
+  only:
+    - develop
+    - main
