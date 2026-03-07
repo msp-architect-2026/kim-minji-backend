@@ -8,10 +8,9 @@ import lombok.NoArgsConstructor;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-
-public class AiPredictionResponse{
+public class AiPredictionResponse {
+    private Long id;
     private String prediction;
     private Double confidence;
 }
-
 

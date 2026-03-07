@@ -43,11 +43,12 @@ public class AiPredictionController {
         log.info("AI 분석 결과: prediction={}, confidence={}",
                 response.getPrediction(), response.getConfidence());
 
-        // 4. DB 저장 (filepath에 objectKey 저장)
-        waferImageService.save(file.getOriginalFilename(), objectKey, response);
-        log.info("분석 결과 DB 저장 완료");
+        // 4. DB 저장 (id 반환받기)
+        Long savedId = waferImageService.save(file.getOriginalFilename(), objectKey, response);
+        log.info("분석 결과 DB 저장 완료: id={}", savedId);
 
-        return response;
+        return new AiPredictionResponse(savedId, response.getPrediction(), response.getConfidence());
+
     }
 
     @ExceptionHandler(FileProcessingException.class)
