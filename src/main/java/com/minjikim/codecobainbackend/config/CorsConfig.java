@@ -12,7 +12,8 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins(
                         "http://localhost:5173",
-                        "https://wafer.local"
+                        "http://app.wafer.local:32088",
+                        "http://app.wafer.local"
                 )
                 .allowedMethods("*")
                 .allowedHeaders("*")
