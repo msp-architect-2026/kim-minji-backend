@@ -17,13 +17,7 @@ build_and_push:
   script:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"gitlab.local:5050\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination $IMAGE_NAME:$IMAGE_TAG
-      --destination $IMAGE_NAME:latest
-      --insecure
-      --skip-tls-verify
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_NAME:$IMAGE_TAG --destination $IMAGE_NAME:latest --insecure --skip-tls-verify
   only:
     - develop
     - main
