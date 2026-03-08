@@ -17,13 +17,7 @@ build_and_push:
   script:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"gitlab.local:5050\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination $IMAGE_NAME:$IMAGE_TAG
-      --destination $IMAGE_NAME:latest
-      --insecure
-      --skip-tls-verify
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_NAME:$IMAGE_TAG --destination $IMAGE_NAME:latest --insecure --skip-tls-verify
   only:
     - develop
     - main
@@ -34,17 +28,9 @@ update-helm:
   tags:
     - arm64
     - docker
-  before_script:
-    - apk add --no-cache git curl
-    - git config --global user.email "gitlab-ci@gitlab.local"
-    - git config --global user.name "GitLab CI"
-    - git config --global http.sslVerify false
+
   script:
-    - git clone http://gitlab-ci-token:${CI_JOB_TOKEN}@172.18.0.2:8929/root/kim-minji-helm.git
-    - cd kim-minji-helm
-    - sed -i "s/tag:.*/tag:\ \"${CI_COMMIT_SHORT_SHA}\"/" backend/values.yaml
-    - git add backend/values.yaml
-    - git commit -m "ci: backend image tag update to ${CI_COMMIT_SHORT_SHA}"
-    - git push origin main
+    - sh update-helm.sh
+
   only:
     - main
