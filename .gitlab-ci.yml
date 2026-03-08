@@ -36,9 +36,9 @@ update-helm:
   script:
     - git clone http://gitlab-ci-token:${CI_JOB_TOKEN}@172.18.0.2:8929/root/kim-minji-helm.git
     - cd kim-minji-helm
-    - sed -i "s/tag:.*/tag:\ \"${CI_COMMIT_SHORT_SHA}\"/" backend/values.yaml
+    - sed -i 's/tag:.*/tag: "'${CI_COMMIT_SHORT_SHA}'"/' backend/values.yaml
     - git add backend/values.yaml
-    - git commit -m "ci: backend image tag update to ${CI_COMMIT_SHORT_SHA}"
+    - git commit -m "ci update backend tag to '${CI_COMMIT_SHORT_SHA}'"
     - git push origin main
   only:
     - main
