@@ -34,6 +34,9 @@ dependencies {
     // MinIO - AWS SDK v1 (S3 호환)
     implementation 'com.amazonaws:aws-java-sdk-s3:1.12.603'
 
+
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
     // MySQL
     runtimeOnly 'com.mysql:mysql-connector-j'
 
