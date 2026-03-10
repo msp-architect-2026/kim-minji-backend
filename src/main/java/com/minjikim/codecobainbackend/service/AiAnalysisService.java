@@ -6,6 +6,8 @@ import com.minjikim.codecobainbackend.exception.AiServerException;
 import com.minjikim.codecobainbackend.exception.InvalidAiResponseException;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +25,7 @@ public class AiAnalysisService {
 
     private final RestTemplate restTemplate;
     private final CircuitBreakerFactory circuitBreakerFactory;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
     private static final Logger logger = LoggerFactory.getLogger(AiAnalysisService.class);
 
     @Value("${ai.server.url}${ai.endpoint.predict}")
@@ -30,6 +33,18 @@ public class AiAnalysisService {
 
     @Value("${minio.bucket}")
     private String bucket;
+
+    @PostConstruct
+    public void registerEventListener() {
+        io.github.resilience4j.circuitbreaker.CircuitBreaker cb =
+                circuitBreakerRegistry.circuitBreaker("aiServing");
+
+        cb.getEventPublisher()
+                .onStateTransition(event ->
+                        logger.warn("Circuit Breaker 상태 변화: {} → {}",
+                                event.getStateTransition().getFromState(),
+                                event.getStateTransition().getToState()));
+    }
 
     public AiPredictionResponse analyze(String objectKey) {
         try {
