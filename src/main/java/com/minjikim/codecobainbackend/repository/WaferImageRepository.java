@@ -24,4 +24,7 @@ public interface WaferImageRepository extends JpaRepository<WaferImageEntity, Lo
     // 평균 confidence
     @Query("SELECT AVG(w.confidence) FROM WaferImageEntity w")
     Double findAvgConfidence();
+
+    @Query("SELECT w FROM WaferImageEntity w WHERE w.createdAt BETWEEN :start AND :end ORDER BY w.createdAt DESC")
+    List<WaferImageEntity> findByCreatedAtBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }
