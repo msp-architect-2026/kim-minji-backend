@@ -15,6 +15,7 @@ import java.util.List;
 public interface WaferImageRepository extends JpaRepository<WaferImageEntity, Long> {
 
     Page<WaferImageEntity> findByPredictionContainingIgnoreCaseOrderByCreatedAtDesc(String keyword, Pageable pageable);
+    Page<WaferImageEntity> findByPredictionIgnoreCaseOrderByCreatedAtDesc(String prediction, Pageable pageable);
 
     // 일별 통계용
     @Query("SELECT w FROM WaferImageEntity w WHERE w.createdAt >= :from ORDER BY w.createdAt ASC")

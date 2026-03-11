@@ -39,8 +39,13 @@ public class AiRecordController {
     ) {
         log.info("페이지네이션 목록 조회 요청: search='{}', page={}, size={}", search, page, size);
         Pageable pageable = PageRequest.of(page, size);
-        Page<WaferImageEntity> resultPage =
-                waferImageRepository.findByPredictionContainingIgnoreCaseOrderByCreatedAtDesc(search, pageable);
+        Page<WaferImageEntity> resultPage;
+
+        if (search == null || search.isBlank()) {
+            resultPage = waferImageRepository.findByPredictionContainingIgnoreCaseOrderByCreatedAtDesc("", pageable);
+        } else {
+            resultPage = waferImageRepository.findByPredictionIgnoreCaseOrderByCreatedAtDesc(search, pageable);
+        }
 
         return resultPage.map(AiRecordResponseDto::from);
     }
