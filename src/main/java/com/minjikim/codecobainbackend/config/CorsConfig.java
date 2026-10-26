@@ -13,7 +13,10 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedOrigins(
                         "http://localhost:5173",
                         "http://app.wafer.local:32088",
-                        "http://app.wafer.local"
+                        "http://app.wafer.local",
+                        // Ingress HTTPS 리다이렉트 이후 접속 주소 (LoadBalancer IP / NodePort)
+                        "https://app.wafer.local",
+                        "https://app.wafer.local:32443"
                 )
                 .allowedMethods("*")
                 .allowedHeaders("*")
