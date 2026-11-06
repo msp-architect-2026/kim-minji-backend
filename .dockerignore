@@ -1,0 +1,11 @@
+# 빌드 컨텍스트에서 제외 (Dockerfile은 gradlew·gradle/·*.gradle·src만 COPY한다)
+build
+.gradle
+.git
+.github
+.gitlab-ci.yml
+.omc
+.idea
+.DS_Store
+*.md
+update-helm.sh
