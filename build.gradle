@@ -59,3 +59,11 @@ processResources {
     from('src/main/resources')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+// Docker 빌드용: src 없이 의존성 jar를 미리 받아 둔다 (Dockerfile의 의존성 레이어 → kaniko 캐시)
+// `gradlew dependencies`는 메타데이터만 받으므로 jar까지 내려받도록 클래스패스를 직접 resolve한다
+tasks.register('resolveDependencies') {
+    def classpaths = ['compileClasspath', 'runtimeClasspath', 'annotationProcessor'].collect { configurations.named(it) }
+    doLast {
+        classpaths.each { it.get().files }
+    }
+}
