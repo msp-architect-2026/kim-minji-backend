@@ -40,11 +40,12 @@ public class SimulationService {
 
     @Transactional
     public SimulationResponse simulate(SimulationRequest request) {
-        int lotCount = request.lots() == null ? 20 : request.lots();
+        int lotCount = request.lots() == null ? 60 : request.lots();
+        int excursionDays = request.excursionDays() == null ? 5 : request.excursionDays();
         String excursionEquipment = request.excursionEquipment() == null ? "ETCH-03" : request.excursionEquipment();
         String excursionDefect = request.excursionDefect() == null ? DefectType.EDGE_RING.getLabel() : request.excursionDefect();
         Random random = new Random(request.seed() == null ? 42L : request.seed());
-        validate(lotCount, excursionEquipment, excursionDefect);
+        validate(lotCount, excursionEquipment, excursionDefect, excursionDays);
 
         List<ProcessStepEntity> route = steps.findAllByOrderBySeq();
         Map<String, List<EquipmentEntity>> equipmentByType = new HashMap<>();
@@ -63,7 +64,9 @@ public class SimulationService {
                 List<EquipmentEntity> candidates = equipmentByType.get(step.getCode());
                 lotRoute.put(step, candidates.get(random.nextInt(candidates.size())));
             }
-            boolean excursion = lotRoute.values().stream().anyMatch(e -> e.getCode().equals(excursionEquipment));
+            // 이상은 최근 excursionDays일 동안만 발생한다. 그 전 데이터가 관리도의 기준선이 된다
+            boolean excursion = startedAt.isAfter(now.minusDays(excursionDays))
+                    && lotRoute.values().stream().anyMatch(e -> e.getCode().equals(excursionEquipment));
             if (excursion) {
                 excursionLots++;
             }
@@ -114,7 +117,10 @@ public class SimulationService {
                 lifecycle.modelVersion(), traceId, at.plusSeconds(2)));
     }
 
-    private void validate(int lotCount, String excursionEquipment, String excursionDefect) {
+    private void validate(int lotCount, String excursionEquipment, String excursionDefect, int excursionDays) {
+        if (excursionDays < 1 || excursionDays > HISTORY_DAYS + 1) {
+            throw new WaferException(ErrorCode.INVALID_REQUEST, "excursionDays는 1~15여야 합니다.");
+        }
         if (lotCount < 1 || lotCount > 200) {
             throw new WaferException(ErrorCode.INVALID_REQUEST, "lots는 1~200이어야 합니다.");
         }

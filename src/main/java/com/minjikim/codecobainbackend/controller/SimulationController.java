@@ -18,6 +18,6 @@ public class SimulationController {
 
     @PostMapping("/dev/simulate")
     public SimulationResponse simulate(@RequestBody(required = false) SimulationRequest request) {
-        return simulationService.simulate(request == null ? new SimulationRequest(null, null, null, null) : request);
+        return simulationService.simulate(request == null ? new SimulationRequest(null, null, null, null, null) : request);
     }
 }

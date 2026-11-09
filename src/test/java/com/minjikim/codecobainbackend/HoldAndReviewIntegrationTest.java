@@ -235,7 +235,7 @@ class HoldAndReviewIntegrationTest {
 
     @Test
     void simulationHoldsExcursionLots() {
-        simulationService.simulate(new SimulationRequest(20, 3L, "ETCH-03", "Edge-Ring"));
+        simulationService.simulate(new SimulationRequest(20, 3L, "ETCH-03", "Edge-Ring", 15));
 
         Integer held = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM lot l JOIN lot_hold h ON h.lot_id = l.id

@@ -123,8 +123,8 @@ class WaferPersistenceIntegrationTest {
 
     private void insert(String prediction, Double confidence, LocalDateTime createdAt) {
         jdbc.update("""
-                INSERT INTO inspection (filename, image_key, status, prediction, confidence, attempt, version, created_at, updated_at)
-                VALUES ('f', 'p', ?, ?, ?, 1, 0, ?, ?)""",
-                prediction == null ? "FAILED" : "DONE", prediction, confidence, createdAt, createdAt);
+                INSERT INTO inspection (filename, image_key, status, prediction, final_prediction, confidence, attempt, version, created_at, updated_at)
+                VALUES ('f', 'p', ?, ?, ?, ?, 1, 0, ?, ?)""",
+                prediction == null ? "FAILED" : "DONE", prediction, prediction, confidence, createdAt, createdAt);
     }
 }

@@ -91,11 +91,18 @@ RECEIVED → UPLOADED → INFERRING → DONE
 
 Lot은 판정 웨이퍼가 `lot.hold.min-judged-wafers`장 이상이고 결함률이 `lot.hold.defect-rate-threshold` 이상이면 자동 Hold됩니다 (Lot당 1회). Hold 중에는 신규 검사와 재시도가 막히고 리뷰만 가능합니다.
 
+### SPC
+
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/spc/p-chart?days=14&defect=&equipment=` | 일별 결함률 p-chart (3시그마 이탈, 중심선 위 8연속) |
+| `GET` | `/spc/commonality?days=14&defect=` | 같은 공정의 설비 간 결함률 비교와 의심 설비 |
+
 ### 통계
 
 | Method | Path | 설명 |
 |--------|------|------|
-| `GET` | `/wafer/stats` | 전체 KPI 통계 (총 건수, 결함 수, 결함률, 평균 신뢰도) |
+| `GET` | `/wafer/stats` | 전체 KPI 통계 (최종 판정 기준: 총 건수, 결함 수, 결함률, 평균 신뢰도) |
 | `GET` | `/wafer/stats/daily?days=7` | 일별 추론 통계 |
 | `GET` | `/wafer/stats/defect-distribution` | 결함 유형별 분포 |
 
