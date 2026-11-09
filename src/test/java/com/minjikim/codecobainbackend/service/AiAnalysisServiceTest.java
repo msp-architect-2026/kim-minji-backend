@@ -68,6 +68,13 @@ class AiAnalysisServiceTest {
     }
 
     @Test
+    void rejectedInputMapsToInvalidFile() {
+        respond(withStatus(HttpStatus.BAD_REQUEST));
+
+        assertFailsWith(ErrorCode.INVALID_FILE);
+    }
+
+    @Test
     void unknownLabelIsRejected() {
         respond(withSuccess("{\"prediction\":\"Unknown\",\"confidence\":0.5}", MediaType.APPLICATION_JSON));
 
