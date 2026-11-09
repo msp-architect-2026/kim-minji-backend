@@ -93,6 +93,15 @@ RECEIVED → UPLOADED → INFERRING → DONE
 
 Lot은 판정 웨이퍼가 `lot.hold.min-judged-wafers`장 이상이고 결함률이 `lot.hold.defect-rate-threshold` 이상이면 자동 Hold됩니다 (Lot당 1회). Hold 중에는 신규 검사와 재시도가 막히고 리뷰만 가능합니다.
 
+### 장애 분석
+
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/failures/summary?hours=24` | 단계·에러 코드별 실패 건수와 미해결 건수 |
+| `GET` | `/failures?hours=24&errorCode=` | 실패 이벤트 목록 (Lot, 슬롯, trace_id, 재시도 가능 여부) |
+
+로그와 span에는 `lot_id`, `inspection_id`가 붙습니다. 5분간 상태 변화가 없는 검사는 `INSPECTION_STUCK`으로 실패 처리되어 재검사할 수 있습니다. 업무 지표는 `/actuator/prometheus`의 `mes_*`로 노출됩니다.
+
 ### SPC
 
 | Method | Path | 설명 |

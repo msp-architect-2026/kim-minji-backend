@@ -19,6 +19,8 @@ public interface LotRepository extends JpaRepository<LotEntity, Long> {
 
     boolean existsByLotNo(String lotNo);
 
+    long countByStatus(LotStatus status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM LotEntity l WHERE l.id = :id")
     Optional<LotEntity> findByIdForUpdate(@Param("id") Long id);
