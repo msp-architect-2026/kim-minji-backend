@@ -1,6 +1,6 @@
 package com.minjikim.codecobainbackend.dto.response;
 
-import com.minjikim.codecobainbackend.entity.WaferImageEntity;
+import com.minjikim.codecobainbackend.entity.InspectionEntity;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -17,11 +17,11 @@ public class AiRecordResponseDto {
     private LocalDateTime createdAt;
 
     // Entity → DTO 변환 정적 메서드
-    public static AiRecordResponseDto from(WaferImageEntity entity) {
+    public static AiRecordResponseDto from(InspectionEntity entity) {
         return new AiRecordResponseDto(
                 entity.getId(),
                 entity.getFilename(),
-                entity.getFilepath(),
+                entity.getImageKey(),
                 entity.getPrediction(),
                 entity.getConfidence(),
                 entity.getCreatedAt()

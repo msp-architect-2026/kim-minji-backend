@@ -44,7 +44,7 @@ POST /ai/predict (multipart/form-data) → InspectionService
 └─ 2. MinIO wafer-images 버킷 업로드 → objectKey 반환
 └─ 3. AI 서빙(FastAPI) 호출 → prediction, confidence 반환
        └─ Circuit Breaker (Resilience4j) 보호
-└─ 4. MySQL wafer_image 테이블 저장 → id 반환
+└─ 4. MySQL inspection 테이블에 결과·상태 이력 저장 → id 반환
 └─ 5. { id, prediction, confidence } 응답
 ```
 
@@ -66,6 +66,25 @@ POST /ai/predict (multipart/form-data) → InspectionService
 | `GET` | `/wafer/records/pages` | 검색 + 페이지네이션 목록 |
 | `GET` | `/wafer/records/{id}` | 단건 상세 조회 |
 | `GET` | `/wafer/records/export` | 날짜·결함 유형 필터 CSV 내보내기 |
+
+### Lot·검사 (MES)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| `POST` | `/lots` | Lot과 웨이퍼 슬롯 생성 |
+| `GET` | `/lots` | Lot 목록 (슬롯 상태별 건수) |
+| `GET` | `/lots/{id}` | Lot 상세 (슬롯별 최근 검사) |
+| `POST` | `/lots/{id}/wafers/{slot}/inspections` | 웨이퍼 검사. `Idempotency-Key` 헤더 지원 |
+| `POST` | `/inspections/{id}/retry` | 실패한 검사를 재업로드 없이 재시도 |
+| `GET` | `/inspections/{id}/events` | 검사 상태 전이 이력 |
+| `GET` | `/wafers/{id}/process-history` | 웨이퍼 공정·설비 이력 |
+| `POST` | `/dev/simulate` | 시뮬레이션 데이터 생성 (`local` 프로파일 전용) |
+
+```
+RECEIVED → UPLOADED → INFERRING → DONE
+                          │     → NEED_REVIEW (신뢰도 < inspection.review-confidence-threshold)
+                          └─────→ FAILED → (재시도) → INFERRING
+```
 
 ### 통계
 
@@ -96,8 +115,9 @@ Controller
 
 Service
 ├─ InspectionService        (검증 → 업로드 → 추론 → 저장 흐름)
+├─ InspectionLifecycle      (상태 전이와 이력 기록, 전이별 트랜잭션)
+├─ LotService               (Lot·웨이퍼 조회/생성)
 ├─ AiAnalysisService        (Circuit Breaker 적용, AI 서빙 호출)
-├─ WaferImageService        (DB CRUD)
 └─ StatsService             (통계 집계)
 
 Util
@@ -105,28 +125,24 @@ Util
 └─ ImageFileValidator       (파일 유효성 검사)
 
 Repository
-└─ WaferImageRepository     (Spring Data JPA)
+└─ Lot/Wafer/Inspection 등  (Spring Data JPA)
 ```
 
 <br>
 
 ## ▍DB 스키마
 
-```sql
-CREATE TABLE wafer_image (
-    id         BIGINT       NOT NULL AUTO_INCREMENT,
-    filename   VARCHAR(255),
-    filepath   VARCHAR(255),   -- MinIO object key
-    prediction VARCHAR(255),
-    confidence DOUBLE,
-    created_at DATETIME,
-    PRIMARY KEY (id)
-);
-```
+| 테이블 | 용도 |
+|--------|------|
+| `lot`, `wafer` | Lot과 슬롯(1~25) 현황 |
+| `process_step`, `equipment` | 공정·설비 기준정보 (V5 seed) |
+| `wafer_process_history` | 웨이퍼별 공정·설비·레시피 이력 |
+| `inspection` | 검사 1건의 상태, 판정, 모델 버전, 에러 코드, trace_id, 멱등키 |
+| `inspection_event` | 검사 상태 전이 이력 (append-only) |
 
 스키마는 Flyway(`src/main/resources/db/migration`)로 관리하고 `ddl-auto=validate`로 검증합니다. 이미 테이블이 있는 DB는 version 1로 baseline한 뒤 V2부터 적용합니다.
 
-이미지 파일 자체는 MinIO에 저장하고, `filepath` 컬럼에 MinIO object key를 저장해 두 스토리지를 연결하는 구조입니다.
+이미지 파일 자체는 MinIO에 저장하고, `inspection.image_key` 컬럼에 MinIO object key를 저장해 두 스토리지를 연결하는 구조입니다.
 
 <br>
 
@@ -161,7 +177,9 @@ AI 서빙 타임아웃 시 백엔드 스레드가 점유되는 연쇄 장애를 
 | code | HTTP | 상황 |
 |------|------|------|
 | `INVALID_FILE` | 400 | 빈 파일, 이미지가 아닌 파일 |
-| `RECORD_NOT_FOUND` | 404 | 없는 기록 조회 |
+| `INVALID_REQUEST` | 400 | 요청 값 오류 |
+| `RECORD_NOT_FOUND`, `LOT_NOT_FOUND`, `WAFER_NOT_FOUND`, `INSPECTION_NOT_FOUND` | 404 | 대상 없음 |
+| `LOT_ALREADY_EXISTS`, `LOT_NOT_ACTIVE`, `INSPECTION_IN_PROGRESS`, `INSPECTION_NOT_RETRYABLE`, `CONCURRENT_UPDATE` | 409 | 현재 상태와 충돌 |
 | `STORAGE_UPLOAD_FAILED` | 500 | MinIO 업로드 실패 |
 | `AI_SERVER_ERROR` | 502 | AI 서버가 오류 상태 반환 |
 | `AI_INVALID_RESPONSE` | 502 | 응답 형식·라벨·confidence 이상 |
@@ -177,9 +195,11 @@ AI 서빙 타임아웃 시 백엔드 스레드가 점유되는 연쇄 장애를 
 ```bash
 colima start --cpu 4 --memory 6
 docker compose up -d --build mysql minio minio-init ai
-DB_URL='jdbc:mysql://127.0.0.1:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC' \
+SPRING_PROFILES_ACTIVE=local DB_URL='jdbc:mysql://127.0.0.1:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC' \
 MINIO_ENDPOINT=http://127.0.0.1:9000 AI_SERVER_URL=http://127.0.0.1:8000 ./gradlew bootRun
 ```
+
+프론트는 `kim-minji-frontend`에서 `VITE_API_URL=http://localhost:8080 npm run dev`로 띄웁니다. `local` 프로파일에서는 Lots 화면의 Simulate 버튼으로 데모 데이터를 만들 수 있습니다.
 
 `docker-compose.yml`은 로컬 검증 전용입니다. AI 서버는 `FAULT_INJECTION_ENABLED=true`로 떠서 `/admin/fault`로 장애를 재현할 수 있습니다.
 
