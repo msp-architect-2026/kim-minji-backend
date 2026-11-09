@@ -47,6 +47,9 @@ dependencies {
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     // DB 마이그레이션
+    // 활성 Span에서 trace_id를 읽는다. agent가 없으면 no-op이다
+    implementation 'io.opentelemetry:opentelemetry-api'
+
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.flywaydb:flyway-mysql'
 

@@ -4,8 +4,8 @@ import com.minjikim.codecobainbackend.dto.response.DailyStatsDto;
 import com.minjikim.codecobainbackend.dto.response.DefectDistributionDto;
 import com.minjikim.codecobainbackend.dto.response.StatsResponseDto;
 import com.minjikim.codecobainbackend.entity.DefectType;
-import com.minjikim.codecobainbackend.repository.WaferImageRepository;
-import com.minjikim.codecobainbackend.repository.WaferImageRepository.OverallStats;
+import com.minjikim.codecobainbackend.repository.InspectionRepository;
+import com.minjikim.codecobainbackend.repository.InspectionRepository.OverallStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,10 +19,10 @@ public class StatsService {
 
     private static final String NONE_LABEL = DefectType.NONE.getLabel();
 
-    private final WaferImageRepository waferImageRepository;
+    private final InspectionRepository inspectionRepository;
 
     public StatsResponseDto getStats() {
-        OverallStats stats = waferImageRepository.findOverallStats(NONE_LABEL);
+        OverallStats stats = inspectionRepository.findOverallStats(NONE_LABEL);
         Double avgConfidence = stats.getAvgConfidence();
         return new StatsResponseDto(
                 stats.getTotal(),
@@ -34,7 +34,7 @@ public class StatsService {
 
     public List<DailyStatsDto> getDailyStats(int days) {
         LocalDateTime from = LocalDate.now().minusDays(days - 1).atStartOfDay();
-        return waferImageRepository.findDailyStats(from, NONE_LABEL).stream()
+        return inspectionRepository.findDailyStats(from, NONE_LABEL).stream()
                 .map(day -> new DailyStatsDto(
                         day.getStatDate(),
                         day.getTotal(),
@@ -45,8 +45,8 @@ public class StatsService {
     }
 
     public List<DefectDistributionDto> getDefectDistribution() {
-        long total = waferImageRepository.count();
-        return waferImageRepository.findDefectCounts().stream()
+        long total = inspectionRepository.countWithPrediction();
+        return inspectionRepository.findDefectCounts().stream()
                 .map(defect -> new DefectDistributionDto(
                         defect.getPrediction(),
                         defect.getTotal(),

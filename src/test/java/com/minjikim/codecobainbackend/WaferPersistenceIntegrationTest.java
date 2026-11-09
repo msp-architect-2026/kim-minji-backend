@@ -42,7 +42,7 @@ class WaferPersistenceIntegrationTest {
 
     @BeforeEach
     void seed() {
-        jdbc.update("DELETE FROM wafer_image");
+        jdbc.update("DELETE FROM inspection");
         insert("Center", 0.8, today.atTime(10, 0));
         insert("none", 1.0, today.atTime(11, 0));
         insert(null, null, today.atTime(12, 0));
@@ -50,12 +50,12 @@ class WaferPersistenceIntegrationTest {
     }
 
     @Test
-    void overallStatsMatchOriginalInMemoryCalculation() {
+    void overallStatsCountOnlyJudgedInspections() {
         StatsResponseDto stats = statsService.getStats();
 
-        assertThat(stats.getTotalCount()).isEqualTo(4);
+        assertThat(stats.getTotalCount()).isEqualTo(3);
         assertThat(stats.getDefectCount()).isEqualTo(2);
-        assertThat(stats.getDefectRate()).isCloseTo(50.0, within(0.001));
+        assertThat(stats.getDefectRate()).isCloseTo(66.667, within(0.001));
         assertThat(stats.getAvgConfidence()).isCloseTo(0.8, within(0.001));
     }
 
@@ -67,24 +67,24 @@ class WaferPersistenceIntegrationTest {
         assertThat(daily.get(0).getDate()).isEqualTo(today.minusDays(1).toString());
         assertThat(daily.get(0).getDefectCount()).isEqualTo(1);
         assertThat(daily.get(1).getDate()).isEqualTo(today.toString());
-        assertThat(daily.get(1).getTotalCount()).isEqualTo(3);
+        assertThat(daily.get(1).getTotalCount()).isEqualTo(2);
         assertThat(daily.get(1).getDefectCount()).isEqualTo(1);
     }
 
     @Test
-    void distributionExcludesNullButKeepsItInDenominator() {
+    void distributionExcludesUnjudgedInspections() {
         List<DefectDistributionDto> distribution = statsService.getDefectDistribution();
 
         assertThat(distribution).hasSize(3);
         assertThat(distribution).allSatisfy(d -> {
             assertThat(d.getCount()).isEqualTo(1);
-            assertThat(d.getRatio()).isCloseTo(25.0, within(0.001));
+            assertThat(d.getRatio()).isCloseTo(33.333, within(0.001));
         });
     }
 
     @Test
-    void existingHibernateSchemaIsBaselinedAndGetsIndexes() throws Exception {
-        String rootUrl = mysql.getJdbcUrl().replace("/" + mysql.getDatabaseName(), "/legacy");
+    void existingHibernateSchemaIsBaselinedAndMigratedToInspection() throws Exception {
+        String legacyUrl = mysql.getJdbcUrl().replace("/" + mysql.getDatabaseName(), "/legacy");
         try (Connection root = DriverManager.getConnection(mysql.getJdbcUrl(), "root", mysql.getPassword());
              Statement statement = root.createStatement()) {
             statement.execute("CREATE DATABASE legacy");
@@ -94,27 +94,37 @@ class WaferPersistenceIntegrationTest {
                         filename VARCHAR(255), filepath VARCHAR(255), created_at DATETIME(6),
                         prediction VARCHAR(255), confidence DOUBLE
                     )""");
-            statement.execute("INSERT INTO legacy.wafer_image (filename) VALUES ('kept')");
+            statement.execute("""
+                    INSERT INTO legacy.wafer_image (id, filename, filepath, created_at, prediction, confidence)
+                    VALUES (41, 'kept.png', 'wafer-images/kept.png', '2026-01-02 03:04:05', 'Center', 0.9)""");
 
-            Flyway.configure().dataSource(rootUrl, "root", mysql.getPassword())
+            Flyway.configure().dataSource(legacyUrl, "root", mysql.getPassword())
                     .baselineOnMigrate(true).baselineVersion("1").load().migrate();
 
-            try (ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM legacy.wafer_image")) {
-                rows.next();
-                assertThat(rows.getInt(1)).isEqualTo(1);
+            try (ResultSet row = statement.executeQuery("""
+                    SELECT image_key, status, prediction, wafer_id,
+                           (SELECT COUNT(*) FROM legacy.inspection_event e WHERE e.inspection_id = i.id) AS events
+                    FROM legacy.inspection i WHERE id = 41""")) {
+                assertThat(row.next()).isTrue();
+                assertThat(row.getString("image_key")).isEqualTo("wafer-images/kept.png");
+                assertThat(row.getString("status")).isEqualTo("DONE");
+                assertThat(row.getString("prediction")).isEqualTo("Center");
+                assertThat(row.getObject("wafer_id")).isNull();
+                assertThat(row.getInt("events")).isEqualTo(1);
             }
-            try (ResultSet indexes = statement.executeQuery("""
-                    SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics
-                    WHERE table_schema = 'legacy' AND table_name = 'wafer_image'
-                    AND index_name LIKE 'idx_wafer_image_%'""")) {
-                indexes.next();
-                assertThat(indexes.getInt(1)).isEqualTo(2);
+            try (ResultSet tables = statement.executeQuery("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'legacy' AND table_name = 'wafer_image'""")) {
+                tables.next();
+                assertThat(tables.getInt(1)).isZero();
             }
         }
     }
 
     private void insert(String prediction, Double confidence, LocalDateTime createdAt) {
-        jdbc.update("INSERT INTO wafer_image (filename, filepath, created_at, prediction, confidence) VALUES ('f', 'p', ?, ?, ?)",
-                createdAt, prediction, confidence);
+        jdbc.update("""
+                INSERT INTO inspection (filename, image_key, status, prediction, confidence, attempt, version, created_at, updated_at)
+                VALUES ('f', 'p', ?, ?, ?, 1, 0, ?, ?)""",
+                prediction == null ? "FAILED" : "DONE", prediction, confidence, createdAt, createdAt);
     }
 }
