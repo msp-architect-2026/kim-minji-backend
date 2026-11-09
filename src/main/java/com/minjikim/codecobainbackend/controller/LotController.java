@@ -1,11 +1,14 @@
 package com.minjikim.codecobainbackend.controller;
 
 import com.minjikim.codecobainbackend.dto.request.LotCreateRequest;
+import com.minjikim.codecobainbackend.dto.request.LotHoldRequest;
+import com.minjikim.codecobainbackend.dto.request.LotReleaseRequest;
 import com.minjikim.codecobainbackend.dto.response.InspectionResponse;
 import com.minjikim.codecobainbackend.dto.response.LotDetailResponse;
 import com.minjikim.codecobainbackend.dto.response.LotSummaryResponse;
 import com.minjikim.codecobainbackend.dto.response.ProcessHistoryResponse;
 import com.minjikim.codecobainbackend.service.InspectionService;
+import com.minjikim.codecobainbackend.service.LotDispositionService;
 import com.minjikim.codecobainbackend.service.LotService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,6 +24,7 @@ public class LotController {
 
     private final LotService lotService;
     private final InspectionService inspectionService;
+    private final LotDispositionService disposition;
 
     @PostMapping("/lots")
     @ResponseStatus(HttpStatus.CREATED)
@@ -38,6 +42,18 @@ public class LotController {
 
     @GetMapping("/lots/{id}")
     public LotDetailResponse detail(@PathVariable Long id) {
+        return lotService.detail(id);
+    }
+
+    @PostMapping("/lots/{id}/hold")
+    public LotDetailResponse hold(@PathVariable Long id, @RequestBody LotHoldRequest request) {
+        disposition.holdManually(id, request.reason(), request.operator());
+        return lotService.detail(id);
+    }
+
+    @PostMapping("/lots/{id}/release")
+    public LotDetailResponse release(@PathVariable Long id, @RequestBody LotReleaseRequest request) {
+        disposition.release(id, request.comment(), request.operator());
         return lotService.detail(id);
     }
 

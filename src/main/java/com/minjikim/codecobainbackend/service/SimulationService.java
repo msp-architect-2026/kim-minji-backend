@@ -23,6 +23,7 @@ public class SimulationService {
 
     private static final int WAFERS_PER_LOT = 25;
     private static final int HISTORY_DAYS = 14;
+    private static final int LOT_DURATION_HOURS = 4;
     private static final double EXCURSION_DEFECT_RATE = 0.6;
     private static final double BASELINE_DEFECT_RATE = 0.08;
     private static final double LOW_CONFIDENCE_RATE = 0.05;
@@ -35,6 +36,7 @@ public class SimulationService {
     private final EquipmentRepository equipments;
     private final ProcessStepRepository steps;
     private final InspectionLifecycle lifecycle;
+    private final LotDispositionService disposition;
 
     @Transactional
     public SimulationResponse simulate(SimulationRequest request) {
@@ -52,7 +54,8 @@ public class SimulationService {
         LocalDateTime now = LocalDateTime.now();
         int excursionLots = 0;
         for (int index = 1; index <= lotCount; index++) {
-            LocalDateTime startedAt = now.minusMinutes(random.nextInt(HISTORY_DAYS * 24 * 60));
+            // 공정·검사 시각이 미래가 되지 않도록 Lot 처리 시간만큼 앞당겨 시작한다
+            LocalDateTime startedAt = now.minusHours(LOT_DURATION_HOURS).minusMinutes(random.nextInt(HISTORY_DAYS * 24 * 60));
             LotEntity lot = lots.save(new LotEntity("SIM-%s-%03d".formatted(batch, index), "DRAM-16G", startedAt));
 
             Map<ProcessStepEntity, EquipmentEntity> lotRoute = new LinkedHashMap<>();
@@ -67,7 +70,7 @@ public class SimulationService {
             for (int slotNo = 1; slotNo <= WAFERS_PER_LOT; slotNo++) {
                 simulateWafer(lot, slotNo, lotRoute, startedAt, excursion, excursionDefect, random);
             }
-            lifecycle.completeLotIfFinished(lot.getId());
+            disposition.evaluate(lot.getId(), startedAt.plusHours(LOT_DURATION_HOURS));
         }
         return new SimulationResponse(lotCount, lotCount * WAFERS_PER_LOT, excursionLots, excursionEquipment, excursionDefect);
     }

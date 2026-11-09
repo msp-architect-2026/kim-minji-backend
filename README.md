@@ -74,7 +74,10 @@ POST /ai/predict (multipart/form-data) → InspectionService
 | `POST` | `/lots` | Lot과 웨이퍼 슬롯 생성 |
 | `GET` | `/lots` | Lot 목록 (슬롯 상태별 건수) |
 | `GET` | `/lots/{id}` | Lot 상세 (슬롯별 최근 검사) |
+| `POST` | `/lots/{id}/hold`, `/lots/{id}/release` | 수동 Hold / Release |
 | `POST` | `/lots/{id}/wafers/{slot}/inspections` | 웨이퍼 검사. `Idempotency-Key` 헤더 지원 |
+| `GET` | `/inspections/pending-reviews` | 리뷰 대기 목록 |
+| `POST` | `/inspections/{id}/review` | 엔지니어 최종 판정 (AI 판정과 별도 저장) |
 | `POST` | `/inspections/{id}/retry` | 실패한 검사를 재업로드 없이 재시도 |
 | `GET` | `/inspections/{id}/events` | 검사 상태 전이 이력 |
 | `GET` | `/wafers/{id}/process-history` | 웨이퍼 공정·설비 이력 |
@@ -85,6 +88,8 @@ RECEIVED → UPLOADED → INFERRING → DONE
                           │     → NEED_REVIEW (신뢰도 < inspection.review-confidence-threshold)
                           └─────→ FAILED → (재시도) → INFERRING
 ```
+
+Lot은 판정 웨이퍼가 `lot.hold.min-judged-wafers`장 이상이고 결함률이 `lot.hold.defect-rate-threshold` 이상이면 자동 Hold됩니다 (Lot당 1회). Hold 중에는 신규 검사와 재시도가 막히고 리뷰만 가능합니다.
 
 ### 통계
 
@@ -179,7 +184,7 @@ AI 서빙 타임아웃 시 백엔드 스레드가 점유되는 연쇄 장애를 
 | `INVALID_FILE` | 400 | 빈 파일, 이미지가 아닌 파일 |
 | `INVALID_REQUEST` | 400 | 요청 값 오류 |
 | `RECORD_NOT_FOUND`, `LOT_NOT_FOUND`, `WAFER_NOT_FOUND`, `INSPECTION_NOT_FOUND` | 404 | 대상 없음 |
-| `LOT_ALREADY_EXISTS`, `LOT_NOT_ACTIVE`, `INSPECTION_IN_PROGRESS`, `INSPECTION_NOT_RETRYABLE`, `CONCURRENT_UPDATE` | 409 | 현재 상태와 충돌 |
+| `LOT_ALREADY_EXISTS`, `LOT_NOT_ACTIVE`, `INSPECTION_IN_PROGRESS`, `INSPECTION_NOT_RETRYABLE`, `INSPECTION_NOT_REVIEWABLE`, `INSPECTION_NEEDS_REVIEW`, `LOT_NOT_ON_HOLD`, `CONCURRENT_UPDATE` | 409 | 현재 상태와 충돌 |
 | `STORAGE_UPLOAD_FAILED` | 500 | MinIO 업로드 실패 |
 | `AI_SERVER_ERROR` | 502 | AI 서버가 오류 상태 반환 |
 | `AI_INVALID_RESPONSE` | 502 | 응답 형식·라벨·confidence 이상 |

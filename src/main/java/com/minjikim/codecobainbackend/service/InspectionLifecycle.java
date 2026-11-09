@@ -7,7 +7,6 @@ import com.minjikim.codecobainbackend.exception.ErrorCode;
 import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.InspectionEventRepository;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
-import com.minjikim.codecobainbackend.repository.LotRepository;
 import com.minjikim.codecobainbackend.repository.WaferRepository;
 import com.minjikim.codecobainbackend.util.TraceIds;
 import lombok.RequiredArgsConstructor;
@@ -16,19 +15,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 // 상태 전이마다 별도 트랜잭션으로 커밋한다. MinIO·AI 호출 중에는 DB 트랜잭션을 잡지 않는다
 @Component
 @RequiredArgsConstructor
 public class InspectionLifecycle {
 
-    private static final List<WaferStatus> FINISHED_WAFER_STATUSES = List.of(WaferStatus.PASS, WaferStatus.DEFECT);
-
     private final InspectionRepository inspections;
     private final InspectionEventRepository events;
     private final WaferRepository wafers;
-    private final LotRepository lots;
+    private final LotDispositionService disposition;
 
     @Value("${inspection.review-confidence-threshold}")
     private double reviewConfidenceThreshold;
@@ -45,6 +41,9 @@ public class InspectionLifecycle {
         }
         if (wafer.getStatus() == WaferStatus.INSPECTING) {
             throw new WaferException(ErrorCode.INSPECTION_IN_PROGRESS);
+        }
+        if (wafer.getStatus() == WaferStatus.REVIEW) {
+            throw new WaferException(ErrorCode.INSPECTION_NEEDS_REVIEW);
         }
         return begin(wafer, filename, idempotencyKey);
     }
@@ -85,7 +84,7 @@ public class InspectionLifecycle {
                 result.getConfidence(), modelVersion, TraceIds.current(), LocalDateTime.now()));
         InspectionResponse response = InspectionResponse.from(inspection);
         if (inspection.getWafer() != null) {
-            completeLotIfFinished(inspection.getWafer().getLot().getId());
+            disposition.evaluate(inspection.getWafer().getLot().getId(), LocalDateTime.now());
         }
         return response;
     }
@@ -106,10 +105,6 @@ public class InspectionLifecycle {
 
     public String modelVersion() {
         return modelVersion;
-    }
-
-    public void completeLotIfFinished(Long lotId) {
-        lots.updateStatusIfAllWafersIn(lotId, LotStatus.COMPLETED, FINISHED_WAFER_STATUSES);
     }
 
     private InspectionEntity load(Long id) {

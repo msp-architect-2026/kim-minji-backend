@@ -34,6 +34,8 @@ public class InspectionEntity {
 
     private String prediction;
     private Double confidence;
+    // 자동 확정이면 AI 판정, 리뷰를 거치면 사람 판정이다. 리뷰 전에는 null이다
+    private String finalPrediction;
     private String modelVersion;
     private String errorCode;
     private String traceId;
@@ -74,8 +76,12 @@ public class InspectionEntity {
     }
 
     public InspectionEventEntity startRetry(String traceId, LocalDateTime at) {
-        if (status != InspectionStatus.FAILED || imageKey == null) {
+        if (status != InspectionStatus.FAILED || imageKey == null
+                || (wafer != null && wafer.getStatus() != WaferStatus.FAILED)) {
             throw new WaferException(ErrorCode.INSPECTION_NOT_RETRYABLE);
+        }
+        if (wafer != null && wafer.getLot().getStatus() != LotStatus.IN_PROGRESS) {
+            throw new WaferException(ErrorCode.LOT_NOT_ACTIVE);
         }
         attempt++;
         errorCode = null;
@@ -87,7 +93,13 @@ public class InspectionEntity {
         this.prediction = prediction;
         this.confidence = confidence;
         this.modelVersion = modelVersion;
+        this.finalPrediction = resultStatus == InspectionStatus.DONE ? prediction : null;
         return transitionTo(resultStatus, null, traceId, at);
+    }
+
+    public InspectionEventEntity confirmReview(String finalPrediction, String traceId, LocalDateTime at) {
+        this.finalPrediction = finalPrediction;
+        return transitionTo(InspectionStatus.DONE, null, traceId, at);
     }
 
     public InspectionEventEntity fail(String errorCode, String traceId, LocalDateTime at) {
@@ -104,7 +116,7 @@ public class InspectionEntity {
         this.traceId = traceId;
         updatedAt = at;
         if (wafer != null) {
-            wafer.applyInspection(next, prediction);
+            wafer.applyInspection(next, finalPrediction);
         }
         return new InspectionEventEntity(this, previous, next, eventErrorCode, traceId, at);
     }

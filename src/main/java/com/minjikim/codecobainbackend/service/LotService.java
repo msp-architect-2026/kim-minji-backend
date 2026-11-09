@@ -3,6 +3,7 @@ package com.minjikim.codecobainbackend.service;
 import com.minjikim.codecobainbackend.dto.request.LotCreateRequest;
 import com.minjikim.codecobainbackend.dto.response.InspectionResponse;
 import com.minjikim.codecobainbackend.dto.response.LotDetailResponse;
+import com.minjikim.codecobainbackend.dto.response.LotHoldResponse;
 import com.minjikim.codecobainbackend.dto.response.LotSummaryResponse;
 import com.minjikim.codecobainbackend.dto.response.ProcessHistoryResponse;
 import com.minjikim.codecobainbackend.entity.InspectionEntity;
@@ -12,6 +13,7 @@ import com.minjikim.codecobainbackend.entity.WaferStatus;
 import com.minjikim.codecobainbackend.exception.ErrorCode;
 import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
+import com.minjikim.codecobainbackend.repository.LotHoldRepository;
 import com.minjikim.codecobainbackend.repository.LotRepository;
 import com.minjikim.codecobainbackend.repository.WaferProcessHistoryRepository;
 import com.minjikim.codecobainbackend.repository.WaferRepository;
@@ -37,6 +39,7 @@ public class LotService {
     private final WaferRepository wafers;
     private final InspectionRepository inspections;
     private final WaferProcessHistoryRepository histories;
+    private final LotHoldRepository holds;
 
     @Transactional
     public LotDetailResponse create(LotCreateRequest request) {
@@ -54,7 +57,7 @@ public class LotService {
         List<WaferEntity> created = wafers.saveAll(IntStream.rangeClosed(1, waferCount)
                 .mapToObj(slotNo -> new WaferEntity(lot, slotNo))
                 .toList());
-        return toDetail(lot, created, Map.of());
+        return toDetail(lot, created, Map.of(), List.of());
     }
 
     @Transactional(readOnly = true)
@@ -81,7 +84,8 @@ public class LotService {
             inspections.findByWaferIdsOrderById(lotWafers.stream().map(WaferEntity::getId).toList())
                     .forEach(inspection -> latest.put(inspection.getWafer().getId(), inspection));
         }
-        return toDetail(lot, lotWafers, latest);
+        return toDetail(lot, lotWafers, latest,
+                holds.findByLotIdOrderByIdDesc(id).stream().map(LotHoldResponse::from).toList());
     }
 
     @Transactional(readOnly = true)
@@ -118,7 +122,8 @@ public class LotService {
         );
     }
 
-    private LotDetailResponse toDetail(LotEntity lot, List<WaferEntity> lotWafers, Map<Long, InspectionEntity> latest) {
+    private LotDetailResponse toDetail(LotEntity lot, List<WaferEntity> lotWafers, Map<Long, InspectionEntity> latest,
+                                       List<LotHoldResponse> lotHolds) {
         List<LotDetailResponse.WaferSlot> slots = lotWafers.stream()
                 .map(wafer -> {
                     InspectionEntity inspection = latest.get(wafer.getId());
@@ -126,6 +131,6 @@ public class LotService {
                             inspection == null ? null : InspectionResponse.from(inspection));
                 })
                 .toList();
-        return new LotDetailResponse(lot.getId(), lot.getLotNo(), lot.getProduct(), lot.getStatus(), lot.getCreatedAt(), slots);
+        return new LotDetailResponse(lot.getId(), lot.getLotNo(), lot.getProduct(), lot.getStatus(), lot.getCreatedAt(), slots, lotHolds);
     }
 }

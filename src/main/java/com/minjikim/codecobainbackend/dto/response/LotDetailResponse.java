@@ -12,7 +12,8 @@ public record LotDetailResponse(
         String product,
         LotStatus status,
         LocalDateTime createdAt,
-        List<WaferSlot> wafers
+        List<WaferSlot> wafers,
+        List<LotHoldResponse> holds
 ) {
     public record WaferSlot(Long waferId, int slotNo, WaferStatus status, InspectionResponse latestInspection) {
     }
