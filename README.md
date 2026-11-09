@@ -74,6 +74,8 @@ POST /ai/predict (multipart/form-data) → InspectionService
 | `POST` | `/lots` | Lot과 웨이퍼 슬롯 생성 |
 | `GET` | `/lots` | Lot 목록 (슬롯 상태별 건수) |
 | `GET` | `/lots/{id}` | Lot 상세 (슬롯별 최근 검사) |
+| `GET` | `/lots/{id}/route` | 공정 진행 현황과 다음 공정 |
+| `POST` | `/lots/{id}/track-in`, `/lots/{id}/track-out` | 설비 이벤트 수신 (공정 순서 검증, 재전송 멱등) |
 | `POST` | `/lots/{id}/hold`, `/lots/{id}/release` | 수동 Hold / Release |
 | `POST` | `/lots/{id}/wafers/{slot}/inspections` | 웨이퍼 검사. `Idempotency-Key` 헤더 지원 |
 | `GET` | `/inspections/pending-reviews` | 리뷰 대기 목록 |
