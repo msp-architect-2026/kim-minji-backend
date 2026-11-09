@@ -45,7 +45,7 @@ public class StatsService {
     }
 
     public List<DefectDistributionDto> getDefectDistribution() {
-        long total = inspectionRepository.countWithPrediction();
+        long total = inspectionRepository.countJudged();
         return inspectionRepository.findDefectCounts().stream()
                 .map(defect -> new DefectDistributionDto(
                         defect.getPrediction(),

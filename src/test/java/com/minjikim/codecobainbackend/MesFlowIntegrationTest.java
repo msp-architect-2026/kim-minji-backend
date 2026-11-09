@@ -190,7 +190,7 @@ class MesFlowIntegrationTest {
 
     @Test
     void simulationConcentratesDefectOnExcursionEquipment() {
-        SimulationResponse response = simulationService.simulate(new SimulationRequest(30, 7L, "ETCH-03", "Edge-Ring"));
+        SimulationResponse response = simulationService.simulate(new SimulationRequest(30, 7L, "ETCH-03", "Edge-Ring", 15));
 
         assertThat(response.wafers()).isEqualTo(750);
         assertThat(response.excursionLots()).isPositive().isLessThan(30);
