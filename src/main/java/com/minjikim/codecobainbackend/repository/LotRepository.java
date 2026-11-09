@@ -22,11 +22,16 @@ public interface LotRepository extends JpaRepository<LotEntity, Long> {
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             UPDATE LotEntity l SET l.status = :status
-            WHERE l.id = :lotId AND NOT EXISTS (
+            WHERE l.id = :lotId AND l.status = :expected AND NOT EXISTS (
                 SELECT 1 FROM WaferEntity w WHERE w.lot.id = :lotId AND w.status NOT IN :finished
             )
             """)
     int updateStatusIfAllWafersIn(@Param("lotId") Long lotId,
+                                  @Param("expected") LotStatus expected,
                                   @Param("status") LotStatus status,
                                   @Param("finished") Collection<WaferStatus> finished);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE LotEntity l SET l.status = :next WHERE l.id = :lotId AND l.status = :expected")
+    int transitionStatus(@Param("lotId") Long lotId, @Param("expected") LotStatus expected, @Param("next") LotStatus next);
 }

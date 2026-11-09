@@ -14,7 +14,8 @@ public enum InspectionStatus {
             case UPLOADED -> next == INFERRING || next == FAILED;
             case INFERRING -> next == DONE || next == NEED_REVIEW || next == FAILED;
             case FAILED -> next == INFERRING;
-            case DONE, NEED_REVIEW -> false;
+            case NEED_REVIEW -> next == DONE;
+            case DONE -> false;
         };
     }
 }

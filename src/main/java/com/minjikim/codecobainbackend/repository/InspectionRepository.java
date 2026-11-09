@@ -1,6 +1,7 @@
 package com.minjikim.codecobainbackend.repository;
 
 import com.minjikim.codecobainbackend.entity.InspectionEntity;
+import com.minjikim.codecobainbackend.entity.InspectionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,6 +26,14 @@ public interface InspectionRepository extends JpaRepository<InspectionEntity, Lo
 
     Page<InspectionEntity> findByPredictionContainingIgnoreCaseOrderByCreatedAtDesc(String keyword, Pageable pageable);
     Page<InspectionEntity> findByPredictionIgnoreCaseOrderByCreatedAtDesc(String prediction, Pageable pageable);
+
+    @Query(value = """
+            SELECT i FROM InspectionEntity i
+            LEFT JOIN FETCH i.wafer w LEFT JOIN FETCH w.lot
+            WHERE i.status = :status
+            ORDER BY i.createdAt
+            """, countQuery = "SELECT COUNT(i) FROM InspectionEntity i WHERE i.status = :status")
+    Page<InspectionEntity> findByStatusWithLot(@Param("status") InspectionStatus status, Pageable pageable);
 
     @Query("SELECT i FROM InspectionEntity i WHERE i.wafer.id IN :waferIds ORDER BY i.id")
     List<InspectionEntity> findByWaferIdsOrderById(@Param("waferIds") Collection<Long> waferIds);
