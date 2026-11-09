@@ -3,13 +3,17 @@ package com.minjikim.codecobainbackend.controller;
 import com.minjikim.codecobainbackend.dto.request.LotCreateRequest;
 import com.minjikim.codecobainbackend.dto.request.LotHoldRequest;
 import com.minjikim.codecobainbackend.dto.request.LotReleaseRequest;
+import com.minjikim.codecobainbackend.dto.request.TrackInRequest;
+import com.minjikim.codecobainbackend.dto.request.TrackOutRequest;
 import com.minjikim.codecobainbackend.dto.response.InspectionResponse;
+import com.minjikim.codecobainbackend.dto.response.LotRouteResponse;
 import com.minjikim.codecobainbackend.dto.response.LotDetailResponse;
 import com.minjikim.codecobainbackend.dto.response.LotSummaryResponse;
 import com.minjikim.codecobainbackend.dto.response.ProcessHistoryResponse;
 import com.minjikim.codecobainbackend.service.InspectionService;
 import com.minjikim.codecobainbackend.service.LotDispositionService;
 import com.minjikim.codecobainbackend.service.LotService;
+import com.minjikim.codecobainbackend.service.LotTrackingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -25,6 +29,7 @@ public class LotController {
     private final LotService lotService;
     private final InspectionService inspectionService;
     private final LotDispositionService disposition;
+    private final LotTrackingService tracking;
 
     @PostMapping("/lots")
     @ResponseStatus(HttpStatus.CREATED)
@@ -43,6 +48,21 @@ public class LotController {
     @GetMapping("/lots/{id}")
     public LotDetailResponse detail(@PathVariable Long id) {
         return lotService.detail(id);
+    }
+
+    @GetMapping("/lots/{id}/route")
+    public LotRouteResponse route(@PathVariable Long id) {
+        return tracking.route(id);
+    }
+
+    @PostMapping("/lots/{id}/track-in")
+    public LotRouteResponse trackIn(@PathVariable Long id, @RequestBody TrackInRequest request) {
+        return tracking.trackIn(id, request);
+    }
+
+    @PostMapping("/lots/{id}/track-out")
+    public LotRouteResponse trackOut(@PathVariable Long id, @RequestBody TrackOutRequest request) {
+        return tracking.trackOut(id, request);
     }
 
     @PostMapping("/lots/{id}/hold")
