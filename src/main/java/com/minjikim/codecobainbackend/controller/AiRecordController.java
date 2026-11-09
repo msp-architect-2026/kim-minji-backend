@@ -2,6 +2,8 @@ package com.minjikim.codecobainbackend.controller;
 
 import com.minjikim.codecobainbackend.dto.response.AiRecordResponseDto;
 import com.minjikim.codecobainbackend.entity.WaferImageEntity;
+import com.minjikim.codecobainbackend.exception.ErrorCode;
+import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.WaferImageRepository;
 import com.minjikim.codecobainbackend.service.WaferImageService;
 import lombok.RequiredArgsConstructor;
@@ -56,7 +58,7 @@ public class AiRecordController {
     public AiRecordResponseDto getRecordById(@PathVariable Long id) {
         log.info("상세 조회 요청: ID={}", id);
         WaferImageEntity entity = waferImageRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("해당 ID의 기록을 찾을 수 없습니다: " + id));
+                .orElseThrow(() -> new WaferException(ErrorCode.RECORD_NOT_FOUND, "해당 ID의 기록을 찾을 수 없습니다: " + id));
         return AiRecordResponseDto.from(entity);
     }
 

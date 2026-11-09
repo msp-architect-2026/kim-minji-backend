@@ -17,14 +17,51 @@ public interface WaferImageRepository extends JpaRepository<WaferImageEntity, Lo
     Page<WaferImageEntity> findByPredictionContainingIgnoreCaseOrderByCreatedAtDesc(String keyword, Pageable pageable);
     Page<WaferImageEntity> findByPredictionIgnoreCaseOrderByCreatedAtDesc(String prediction, Pageable pageable);
 
-    // 일별 통계용
-    @Query("SELECT w FROM WaferImageEntity w WHERE w.createdAt >= :from ORDER BY w.createdAt ASC")
-    List<WaferImageEntity> findByCreatedAtAfter(@Param("from") LocalDateTime from);
+    @Query("""
+            SELECT COUNT(w) AS total,
+                   COALESCE(SUM(CASE WHEN LOWER(w.prediction) <> :noneLabel THEN 1 ELSE 0 END), 0) AS defect,
+                   AVG(w.confidence) AS avgConfidence
+            FROM WaferImageEntity w
+            """)
+    OverallStats findOverallStats(@Param("noneLabel") String noneLabel);
 
-    // 평균 confidence
-    @Query("SELECT AVG(w.confidence) FROM WaferImageEntity w")
-    Double findAvgConfidence();
+    @Query(value = """
+            SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS statDate,
+                   COUNT(*) AS total,
+                   COALESCE(SUM(CASE WHEN LOWER(prediction) <> :noneLabel THEN 1 ELSE 0 END), 0) AS defect
+            FROM wafer_image
+            WHERE created_at >= :from
+            GROUP BY statDate
+            ORDER BY statDate
+            """, nativeQuery = true)
+    List<DailyStats> findDailyStats(@Param("from") LocalDateTime from, @Param("noneLabel") String noneLabel);
+
+    @Query("""
+            SELECT w.prediction AS prediction, COUNT(w) AS total
+            FROM WaferImageEntity w
+            WHERE w.prediction IS NOT NULL
+            GROUP BY w.prediction
+            ORDER BY COUNT(w) DESC
+            """)
+    List<DefectCount> findDefectCounts();
 
     @Query("SELECT w FROM WaferImageEntity w WHERE w.createdAt BETWEEN :start AND :end ORDER BY w.createdAt DESC")
     List<WaferImageEntity> findByCreatedAtBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    interface OverallStats {
+        long getTotal();
+        long getDefect();
+        Double getAvgConfidence();
+    }
+
+    interface DailyStats {
+        String getStatDate();
+        long getTotal();
+        long getDefect();
+    }
+
+    interface DefectCount {
+        String getPrediction();
+        long getTotal();
+    }
 }

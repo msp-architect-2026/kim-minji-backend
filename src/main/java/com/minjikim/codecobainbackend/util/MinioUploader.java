@@ -1,12 +1,14 @@
 package com.minjikim.codecobainbackend.util;
 
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.minjikim.codecobainbackend.exception.FileProcessingException;
+import com.minjikim.codecobainbackend.exception.ErrorCode;
+import com.minjikim.codecobainbackend.exception.WaferException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,8 +70,8 @@ public class MinioUploader {
             // object_key만 반환 (AI 서버에 bucket + key로 넘길 거라서)
             return key;
 
-        } catch (IOException e) {
-            throw new FileProcessingException("MinIO 업로드 실패", e);
+        } catch (IOException | SdkClientException e) {
+            throw new WaferException(ErrorCode.STORAGE_UPLOAD_FAILED, e);
         }
     }
 }

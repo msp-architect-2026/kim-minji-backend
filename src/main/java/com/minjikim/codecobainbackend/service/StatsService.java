@@ -3,69 +3,59 @@ package com.minjikim.codecobainbackend.service;
 import com.minjikim.codecobainbackend.dto.response.DailyStatsDto;
 import com.minjikim.codecobainbackend.dto.response.DefectDistributionDto;
 import com.minjikim.codecobainbackend.dto.response.StatsResponseDto;
-import com.minjikim.codecobainbackend.entity.WaferImageEntity;
+import com.minjikim.codecobainbackend.entity.DefectType;
 import com.minjikim.codecobainbackend.repository.WaferImageRepository;
+import com.minjikim.codecobainbackend.repository.WaferImageRepository.OverallStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class StatsService {
 
+    private static final String NONE_LABEL = DefectType.NONE.getLabel();
+
     private final WaferImageRepository waferImageRepository;
 
     public StatsResponseDto getStats() {
-        List<WaferImageEntity> all = waferImageRepository.findAll();
-        long total = all.size();
-        long defect = all.stream()
-                .filter(w -> w.getPrediction() != null && !w.getPrediction().equalsIgnoreCase("none"))
-                .count();
-        double defectRate = total == 0 ? 0 : (double) defect / total * 100;
-        Double avgConf = waferImageRepository.findAvgConfidence();
-        return new StatsResponseDto(total, defect, defectRate, avgConf == null ? 0 : avgConf);
+        OverallStats stats = waferImageRepository.findOverallStats(NONE_LABEL);
+        Double avgConfidence = stats.getAvgConfidence();
+        return new StatsResponseDto(
+                stats.getTotal(),
+                stats.getDefect(),
+                percent(stats.getDefect(), stats.getTotal()),
+                avgConfidence == null ? 0 : avgConfidence
+        );
     }
 
     public List<DailyStatsDto> getDailyStats(int days) {
         LocalDateTime from = LocalDate.now().minusDays(days - 1).atStartOfDay();
-        List<WaferImageEntity> list = waferImageRepository.findByCreatedAtAfter(from);
-
-        Map<LocalDate, List<WaferImageEntity>> grouped = list.stream()
-                .collect(Collectors.groupingBy(w -> w.getCreatedAt().toLocalDate()));
-
-        return grouped.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> {
-                    long total = entry.getValue().size();
-                    long defect = entry.getValue().stream()
-                            .filter(w -> w.getPrediction() != null && !w.getPrediction().equalsIgnoreCase("none"))
-                            .count();
-                    double rate = total == 0 ? 0 : (double) defect / total * 100;
-                    return new DailyStatsDto(entry.getKey().toString(), total, defect, rate);
-                })
-                .collect(Collectors.toList());
+        return waferImageRepository.findDailyStats(from, NONE_LABEL).stream()
+                .map(day -> new DailyStatsDto(
+                        day.getStatDate(),
+                        day.getTotal(),
+                        day.getDefect(),
+                        percent(day.getDefect(), day.getTotal())
+                ))
+                .toList();
     }
 
     public List<DefectDistributionDto> getDefectDistribution() {
-        List<WaferImageEntity> all = waferImageRepository.findAll();
-        long total = all.size();
-
-        Map<String, Long> grouped = all.stream()
-                .filter(w -> w.getPrediction() != null)
-                .collect(Collectors.groupingBy(WaferImageEntity::getPrediction, Collectors.counting()));
-
-        return grouped.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                .map(entry -> new DefectDistributionDto(
-                        entry.getKey(),
-                        entry.getValue(),
-                        total == 0 ? 0 : (double) entry.getValue() / total * 100
+        long total = waferImageRepository.count();
+        return waferImageRepository.findDefectCounts().stream()
+                .map(defect -> new DefectDistributionDto(
+                        defect.getPrediction(),
+                        defect.getTotal(),
+                        percent(defect.getTotal(), total)
                 ))
-                .collect(Collectors.toList());
+                .toList();
+    }
+
+    private double percent(long part, long total) {
+        return total == 0 ? 0 : (double) part / total * 100;
     }
 }
