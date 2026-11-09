@@ -6,6 +6,7 @@ import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.LotHoldRepository;
 import com.minjikim.codecobainbackend.repository.LotRepository;
 import com.minjikim.codecobainbackend.repository.WaferRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class LotDispositionService {
     private final LotRepository lots;
     private final LotHoldRepository holds;
     private final WaferRepository wafers;
+    private final MeterRegistry meterRegistry;
 
     @Value("${lot.hold.min-judged-wafers}")
     private int minJudgedWafers;
@@ -81,6 +83,7 @@ public class LotDispositionService {
             return false;
         }
         holds.save(new LotHoldEntity(lots.getReferenceById(lotId), source, reason, operator, at));
+        meterRegistry.counter("mes.lot.holds", "source", source.name()).increment();
         return true;
     }
 

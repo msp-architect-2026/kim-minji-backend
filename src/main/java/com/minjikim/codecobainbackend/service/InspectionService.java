@@ -8,6 +8,7 @@ import com.minjikim.codecobainbackend.exception.ErrorCode;
 import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.InspectionEventRepository;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
+import com.minjikim.codecobainbackend.util.BusinessContext;
 import com.minjikim.codecobainbackend.util.ImageFileValidator;
 import com.minjikim.codecobainbackend.util.MinioUploader;
 import lombok.RequiredArgsConstructor;
@@ -39,11 +40,13 @@ public class InspectionService {
         imageFileValidator.validate(file);
 
         Long id = lifecycle.beginWithoutWafer(file.getOriginalFilename());
+        BusinessContext.bind(null, id);
         InspectionResponse result = uploadAndInfer(id, file);
         return new AiPredictionResponse(result.id(), result.prediction(), result.confidence());
     }
 
     public InspectionResponse inspectWafer(Long lotId, int slotNo, MultipartFile file, String idempotencyKey) {
+        BusinessContext.bind(lotId, null);
         log.info("웨이퍼 검사 요청 수신: lotId={}, slotNo={}", lotId, slotNo);
         imageFileValidator.validate(file);
 
@@ -58,10 +61,12 @@ public class InspectionService {
             // 같은 키의 요청이 동시에 들어와 다른 쪽이 먼저 저장한 경우
             return findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
         }
+        BusinessContext.bind(lotId, id);
         return uploadAndInfer(id, file);
     }
 
     public InspectionResponse retry(Long id) {
+        BusinessContext.bind(lifecycle.lotIdOf(id), id);
         log.info("검사 재시도 요청: inspectionId={}", id);
         return infer(id, lifecycle.startRetry(id));
     }

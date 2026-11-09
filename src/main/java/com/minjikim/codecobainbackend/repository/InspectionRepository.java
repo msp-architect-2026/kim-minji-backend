@@ -20,6 +20,11 @@ public interface InspectionRepository extends JpaRepository<InspectionEntity, Lo
 
     Optional<InspectionEntity> findByIdempotencyKey(String idempotencyKey);
 
+    long countByStatus(InspectionStatus status);
+
+    @Query("SELECT i.id FROM InspectionEntity i WHERE i.status IN :statuses AND i.updatedAt < :cutoff ORDER BY i.updatedAt")
+    List<Long> findStuckIds(@Param("statuses") Collection<InspectionStatus> statuses, @Param("cutoff") LocalDateTime cutoff, Pageable pageable);
+
     Optional<InspectionEntity> findByIdAndPredictionIsNotNull(Long id);
 
     List<InspectionEntity> findByPredictionIsNotNull();

@@ -9,6 +9,7 @@ import com.minjikim.codecobainbackend.repository.InspectionEventRepository;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
 import com.minjikim.codecobainbackend.repository.WaferRepository;
 import com.minjikim.codecobainbackend.util.TraceIds;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,7 @@ public class InspectionLifecycle {
     private final InspectionEventRepository events;
     private final WaferRepository wafers;
     private final LotDispositionService disposition;
+    private final MeterRegistry meterRegistry;
 
     @Value("${inspection.review-confidence-threshold}")
     private double reviewConfidenceThreshold;
@@ -92,6 +94,24 @@ public class InspectionLifecycle {
     @Transactional
     public void fail(Long id, ErrorCode errorCode) {
         events.save(load(id).fail(errorCode.name(), TraceIds.current(), LocalDateTime.now()));
+        meterRegistry.counter("mes.inspection.failures", "error_code", errorCode.name()).increment();
+    }
+
+    // 조회와 처리 사이에 검사가 진행됐을 수 있으므로 트랜잭션 안에서 다시 확인한다
+    @Transactional
+    public boolean failIfStuck(Long id, LocalDateTime cutoff) {
+        InspectionEntity inspection = load(id);
+        if (!inspection.getStatus().canTransitionTo(InspectionStatus.FAILED) || !inspection.getUpdatedAt().isBefore(cutoff)) {
+            return false;
+        }
+        fail(id, ErrorCode.INSPECTION_STUCK);
+        return true;
+    }
+
+    @Transactional(readOnly = true)
+    public Long lotIdOf(Long id) {
+        InspectionEntity inspection = load(id);
+        return inspection.getWafer() == null ? null : inspection.getWafer().getLot().getId();
     }
 
     @Transactional(readOnly = true)

@@ -32,6 +32,7 @@ public enum ErrorCode {
     AI_CIRCUIT_OPEN(HttpStatus.SERVICE_UNAVAILABLE, "AI 서비스가 일시 중단되었습니다."),
     AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 서버에 연결할 수 없습니다."),
     AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "AI 서버 응답 시간이 초과되었습니다."),
+    INSPECTION_STUCK(HttpStatus.INTERNAL_SERVER_ERROR, "검사가 제한 시간 안에 끝나지 않았습니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;
