@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
@@ -58,6 +59,8 @@ public class AiAnalysisService {
                     ? ErrorCode.AI_TIMEOUT
                     : ErrorCode.AI_UNAVAILABLE;
             throw new WaferException(code, e);
+        } catch (HttpClientErrorException.BadRequest e) {
+            throw new WaferException(ErrorCode.INVALID_FILE, "웨이퍼 맵 규격(0/127/255 3단계 PNG)이 아닙니다.", e);
         } catch (RestClientResponseException e) {
             throw new WaferException(ErrorCode.AI_SERVER_ERROR, "AI 서버 응답 오류: " + e.getStatusCode(), e);
         } catch (RestClientException e) {
