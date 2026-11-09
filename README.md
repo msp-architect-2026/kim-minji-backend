@@ -39,7 +39,7 @@
 ## ▍추론 처리 흐름
 
 ```
-POST /ai/predict (multipart/form-data)
+POST /ai/predict (multipart/form-data) → InspectionService
 └─ 1. 파일 유효성 검사 (ImageFileValidator)
 └─ 2. MinIO wafer-images 버킷 업로드 → objectKey 반환
 └─ 3. AI 서빙(FastAPI) 호출 → prediction, confidence 반환
@@ -95,6 +95,7 @@ Controller
 └─ StatsController          (/wafer/stats)
 
 Service
+├─ InspectionService        (검증 → 업로드 → 추론 → 저장 흐름)
 ├─ AiAnalysisService        (Circuit Breaker 적용, AI 서빙 호출)
 ├─ WaferImageService        (DB CRUD)
 └─ StatsService             (통계 집계)
@@ -123,6 +124,8 @@ CREATE TABLE wafer_image (
 );
 ```
 
+스키마는 Flyway(`src/main/resources/db/migration`)로 관리하고 `ddl-auto=validate`로 검증합니다. 이미 테이블이 있는 DB는 version 1로 baseline한 뒤 V2부터 적용합니다.
+
 이미지 파일 자체는 MinIO에 저장하고, `filepath` 컬럼에 MinIO object key를 저장해 두 스토리지를 연결하는 구조입니다.
 
 <br>
@@ -138,7 +141,8 @@ AI 서빙 타임아웃 시 백엔드 스레드가 점유되는 연쇄 장애를 
 | failure-rate-threshold | 50% | 실패율 50% 초과 시 OPEN 전환 |
 | wait-duration-in-open-state | 30s | OPEN 유지 시간 |
 | permitted-calls-in-half-open | 3 | HALF-OPEN 테스트 요청 수 |
-| timeout-duration | 10s | AI 서버 응답 타임아웃 (기존 60s → 10s) |
+| ai.client.connect-timeout | 2s | AI 서버 연결 타임아웃 (RestTemplate) |
+| ai.client.read-timeout | 10s | AI 서버 응답 타임아웃 (RestTemplate) |
 
 **상태 전환**
 
@@ -147,6 +151,46 @@ AI 서빙 타임아웃 시 백엔드 스레드가 점유되는 연쇄 장애를 
 | CLOSED | 정상 요청 처리 |
 | OPEN | 즉시 차단, `503` 반환 (30초 후 자동 HALF_OPEN 전환) |
 | HALF_OPEN | 테스트 요청 3건 허용 후 상태 결정 |
+
+<br>
+
+## ▍에러 응답
+
+실패 응답은 RFC 9457 ProblemDetail에 `code`와 `traceId`를 담아 반환합니다. `traceId`는 OTel trace_id이고, agent가 없는 환경에서는 서버가 생성해 로그에 함께 남깁니다.
+
+| code | HTTP | 상황 |
+|------|------|------|
+| `INVALID_FILE` | 400 | 빈 파일, 이미지가 아닌 파일 |
+| `RECORD_NOT_FOUND` | 404 | 없는 기록 조회 |
+| `STORAGE_UPLOAD_FAILED` | 500 | MinIO 업로드 실패 |
+| `AI_SERVER_ERROR` | 502 | AI 서버가 오류 상태 반환 |
+| `AI_INVALID_RESPONSE` | 502 | 응답 형식·라벨·confidence 이상 |
+| `AI_CIRCUIT_OPEN` | 503 | Circuit Breaker OPEN |
+| `AI_UNAVAILABLE` | 503 | AI 서버 연결 실패 |
+| `AI_TIMEOUT` | 504 | AI 서버 응답 시간 초과 |
+| `INTERNAL_ERROR` | 500 | 그 외 예외 |
+
+<br>
+
+## ▍로컬 실행
+
+```bash
+colima start --cpu 4 --memory 6
+docker compose up -d --build mysql minio minio-init ai
+DB_URL='jdbc:mysql://127.0.0.1:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC' \
+MINIO_ENDPOINT=http://127.0.0.1:9000 AI_SERVER_URL=http://127.0.0.1:8000 ./gradlew bootRun
+```
+
+`docker-compose.yml`은 로컬 검증 전용입니다. AI 서버는 `FAULT_INJECTION_ENABLED=true`로 떠서 `/admin/fault`로 장애를 재현할 수 있습니다.
+
+통합 테스트는 Testcontainers로 실제 MySQL을 띄우며, Docker에 접속하지 못하면 **건너뛰고 빌드는 성공**합니다. colima에서는 아래처럼 실행하고 결과의 skipped가 0인지 확인합니다.
+
+```bash
+DOCKER_HOST=unix://$HOME/.colima/default/docker.sock \
+TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock \
+TESTCONTAINERS_DOCKER_CLIENT_STRATEGY=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy \
+./gradlew test
+```
 
 <br>
 

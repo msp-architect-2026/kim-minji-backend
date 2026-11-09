@@ -1,9 +1,9 @@
 package com.minjikim.codecobainbackend.service;
 
 import com.minjikim.codecobainbackend.dto.response.AiPredictionResponse;
-import com.minjikim.codecobainbackend.exception.AiRequestSendException;
-import com.minjikim.codecobainbackend.exception.AiServerException;
-import com.minjikim.codecobainbackend.exception.InvalidAiResponseException;
+import com.minjikim.codecobainbackend.entity.DefectType;
+import com.minjikim.codecobainbackend.exception.ErrorCode;
+import com.minjikim.codecobainbackend.exception.WaferException;
 
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -15,8 +15,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
 import java.util.Map;
 
 @Service
@@ -44,16 +48,20 @@ public class AiAnalysisService {
     }
 
     public AiPredictionResponse analyze(String objectKey) {
+        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("aiServing");
         try {
-            CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("aiServing");
-            return CircuitBreaker.decorateCallable(cb, () -> callAiServer(objectKey)).call();
-
+            return cb.executeSupplier(() -> callAiServer(objectKey));
         } catch (CallNotPermittedException e) {
-            logger.warn("Circuit Breaker OPEN 상태 - AI 서버 요청 차단됨");
-            throw new AiServerException("AI 서비스 일시 중단 (Circuit Breaker OPEN)", e);
-        } catch (Exception e) {
-            logger.error("AI 분석 요청 중 오류 발생: {}", e.getMessage(), e);
-            throw new AiServerException("AI 분석 실패", e);
+            throw new WaferException(ErrorCode.AI_CIRCUIT_OPEN, e);
+        } catch (ResourceAccessException e) {
+            ErrorCode code = e.getCause() instanceof SocketTimeoutException
+                    ? ErrorCode.AI_TIMEOUT
+                    : ErrorCode.AI_UNAVAILABLE;
+            throw new WaferException(code, e);
+        } catch (RestClientResponseException e) {
+            throw new WaferException(ErrorCode.AI_SERVER_ERROR, "AI 서버 응답 오류: " + e.getStatusCode(), e);
+        } catch (RestClientException e) {
+            throw new WaferException(ErrorCode.AI_INVALID_RESPONSE, e);
         }
     }
 
@@ -67,8 +75,7 @@ public class AiAnalysisService {
         );
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
 
-        logger.info("AI 서버에 분석 요청 전송: {}", aiUrl);
-        logger.info("요청 파라미터: bucket_name={}, object_key={}", bucket, objectKey);
+        logger.info("AI 서버에 분석 요청 전송: bucket_name={}, object_key={}", bucket, objectKey);
 
         ResponseEntity<AiPredictionResponse> response = restTemplate.exchange(
                 aiUrl,
@@ -77,25 +84,22 @@ public class AiAnalysisService {
                 AiPredictionResponse.class
         );
 
-        validateResponse(response);
-        logger.info("AI 분석 결과: {}", response.getBody());
+        AiPredictionResponse result = response.getBody();
+        validateResponse(result);
+        logger.info("AI 분석 결과: prediction={}, confidence={}", result.getPrediction(), result.getConfidence());
 
-        return response.getBody();
+        return result;
     }
 
-    private void validateResponse(ResponseEntity<AiPredictionResponse> response) {
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new AiRequestSendException("AI 서버 응답 오류: " + response.getStatusCode());
-        }
-        AiPredictionResponse body = response.getBody();
+    private void validateResponse(AiPredictionResponse body) {
         if (body == null) {
-            throw new InvalidAiResponseException("AI 응답 body가 null 입니다.");
+            throw new WaferException(ErrorCode.AI_INVALID_RESPONSE, "AI 응답 body가 null 입니다.");
         }
-        if (body.getPrediction() == null || body.getPrediction().isBlank()) {
-            throw new InvalidAiResponseException("AI 응답 prediction 값이 비어 있습니다.");
+        if (!DefectType.isKnown(body.getPrediction())) {
+            throw new WaferException(ErrorCode.AI_INVALID_RESPONSE, "AI 응답 prediction 값이 유효하지 않습니다: " + body.getPrediction());
         }
         if (body.getConfidence() == null || body.getConfidence() < 0 || body.getConfidence() > 1) {
-            throw new InvalidAiResponseException("AI 응답 confidence 값이 유효하지 않습니다.");
+            throw new WaferException(ErrorCode.AI_INVALID_RESPONSE, "AI 응답 confidence 값이 유효하지 않습니다.");
         }
     }
 }

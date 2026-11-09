@@ -1,0 +1,70 @@
+# 로컬 개발·검증 전용. 클러스터 배포에는 쓰지 않는다 (배포는 kim-minji-helm)
+# backend는 ./gradlew bootRun으로 띄운다. 계정 값은 application.properties의 로컬 기본값과 같다
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: localroot
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppass123
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -uappuser -papppass123 -e 'SELECT 1' appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    # Docker Hub의 minio/minio는 pull access denied라 chainguard 이미지를 쓴다
+    image: chainguard/minio:latest
+    command: ["server", "/tmp/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # AI 이미지에 이미 있는 boto3로 버킷을 만든다
+  minio-init:
+    build: ../kim-minji-ai
+    depends_on:
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+    command:
+      - python
+      - -c
+      - |
+        import boto3, time
+        s3 = boto3.client("s3", endpoint_url="http://minio:9000", region_name="us-east-1")
+        for attempt in range(30):
+            try:
+                if "wafer-image-bucket" not in [b["Name"] for b in s3.list_buckets()["Buckets"]]:
+                    s3.create_bucket(Bucket="wafer-image-bucket")
+                break
+            except Exception as e:
+                if attempt == 29:
+                    raise
+                time.sleep(1)
+
+  ai:
+    build: ../kim-minji-ai
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      # 모델을 마운트해 MinIO 다운로드를 건너뛴다
+      MODEL_PATH: /models/wafer_defect_model.h5
+      OTEL_SDK_DISABLED: "true"
+      FAULT_INJECTION_ENABLED: "true"
+    volumes:
+      - ../kim-minji-ai/wafer_defect_model.h5:/models/wafer_defect_model.h5:ro
+    ports:
+      - "8000:8000"
