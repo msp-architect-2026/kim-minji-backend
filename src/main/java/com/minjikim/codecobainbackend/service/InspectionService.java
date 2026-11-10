@@ -41,7 +41,7 @@ public class InspectionService {
 
         Long id = lifecycle.beginWithoutWafer(file.getOriginalFilename());
         BusinessContext.bind(null, id);
-        InspectionResponse result = uploadAndInfer(id, file);
+        InspectionResponse result = uploadAndInfer(id, null, file);
         return new AiPredictionResponse(result.id(), result.prediction(), result.confidence());
     }
 
@@ -62,13 +62,14 @@ public class InspectionService {
             return findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
         }
         BusinessContext.bind(lotId, id);
-        return uploadAndInfer(id, file);
+        return uploadAndInfer(id, lotId, file);
     }
 
     public InspectionResponse retry(Long id) {
-        BusinessContext.bind(lifecycle.lotIdOf(id), id);
+        Long lotId = lifecycle.lotIdOf(id);
+        BusinessContext.bind(lotId, id);
         log.info("검사 재시도 요청: inspectionId={}", id);
-        return infer(id, lifecycle.startRetry(id));
+        return infer(id, lotId, lifecycle.startRetry(id));
     }
 
     public List<InspectionEventResponse> findEvents(Long id) {
@@ -87,7 +88,7 @@ public class InspectionService {
                 .map(lifecycle::view);
     }
 
-    private InspectionResponse uploadAndInfer(Long id, MultipartFile file) {
+    private InspectionResponse uploadAndInfer(Long id, Long lotId, MultipartFile file) {
         String imageKey;
         try {
             imageKey = minioUploader.upload(file, IMAGE_DIR);
@@ -97,10 +98,10 @@ public class InspectionService {
         }
         lifecycle.markUploaded(id, imageKey);
         lifecycle.startInference(id);
-        return infer(id, imageKey);
+        return infer(id, lotId, imageKey);
     }
 
-    private InspectionResponse infer(Long id, String imageKey) {
+    private InspectionResponse infer(Long id, Long lotId, String imageKey) {
         AiPredictionResponse result;
         try {
             result = aiAnalysisService.analyze(imageKey);
@@ -108,7 +109,7 @@ public class InspectionService {
             lifecycle.fail(id, errorCodeOf(e));
             throw e;
         }
-        return lifecycle.complete(id, result);
+        return lifecycle.complete(id, lotId, result);
     }
 
     private ErrorCode errorCodeOf(RuntimeException e) {

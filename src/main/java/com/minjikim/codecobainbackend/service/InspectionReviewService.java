@@ -18,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 
@@ -33,6 +34,7 @@ public class InspectionReviewService {
     private final InspectionReviewRepository reviews;
     private final LotDispositionService disposition;
     private final InspectionLifecycle lifecycle;
+    private final TransactionTemplate transactions;
 
     @Transactional(readOnly = true)
     public Page<PendingReviewResponse> pending(int page, int size) {
@@ -40,12 +42,18 @@ public class InspectionReviewService {
                 .map(PendingReviewResponse::from);
     }
 
-    @Transactional
+    // Lot 잠금이 확정 트랜잭션의 첫 문장이 되도록 lotId는 별도 읽기 트랜잭션에서 구한다 (InspectionLifecycle.lockLot 주석)
     public InspectionResponse review(Long id, ReviewRequest request) {
         validate(request);
-        lifecycle.lockLotOf(id);
+        Long lotId = lifecycle.lotIdOf(id);
+        return transactions.execute(status -> confirm(id, lotId, request));
+    }
+
+    private InspectionResponse confirm(Long id, Long lotId, ReviewRequest request) {
+        lifecycle.lockLot(lotId);
         InspectionEntity inspection = inspections.findById(id)
                 .orElseThrow(() -> new WaferException(ErrorCode.INSPECTION_NOT_FOUND));
+        lifecycle.requireSameLot(inspection, lotId);
         if (inspection.getStatus() != InspectionStatus.NEED_REVIEW) {
             throw new WaferException(ErrorCode.INSPECTION_NOT_REVIEWABLE);
         }
