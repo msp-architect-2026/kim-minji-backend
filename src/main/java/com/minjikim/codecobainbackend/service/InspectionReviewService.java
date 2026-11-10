@@ -32,6 +32,7 @@ public class InspectionReviewService {
     private final InspectionEventRepository events;
     private final InspectionReviewRepository reviews;
     private final LotDispositionService disposition;
+    private final InspectionLifecycle lifecycle;
 
     @Transactional(readOnly = true)
     public Page<PendingReviewResponse> pending(int page, int size) {
@@ -42,6 +43,7 @@ public class InspectionReviewService {
     @Transactional
     public InspectionResponse review(Long id, ReviewRequest request) {
         validate(request);
+        lifecycle.lockLotOf(id);
         InspectionEntity inspection = inspections.findById(id)
                 .orElseThrow(() -> new WaferException(ErrorCode.INSPECTION_NOT_FOUND));
         if (inspection.getStatus() != InspectionStatus.NEED_REVIEW) {

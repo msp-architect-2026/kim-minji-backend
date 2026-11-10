@@ -7,6 +7,7 @@ import com.minjikim.codecobainbackend.exception.ErrorCode;
 import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.InspectionEventRepository;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
+import com.minjikim.codecobainbackend.repository.LotRepository;
 import com.minjikim.codecobainbackend.repository.WaferRepository;
 import com.minjikim.codecobainbackend.util.TraceIds;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -26,6 +27,7 @@ public class InspectionLifecycle {
     private final InspectionEventRepository events;
     private final WaferRepository wafers;
     private final LotDispositionService disposition;
+    private final LotRepository lots;
     private final MeterRegistry meterRegistry;
 
     @Value("${inspection.review-confidence-threshold}")
@@ -81,6 +83,7 @@ public class InspectionLifecycle {
 
     @Transactional
     public InspectionResponse complete(Long id, AiPredictionResponse result) {
+        lockLotOf(id);
         InspectionEntity inspection = load(id);
         events.save(inspection.complete(resultStatus(result.getConfidence()), result.getPrediction(),
                 result.getConfidence(), modelVersion, TraceIds.current(), LocalDateTime.now()));
@@ -117,6 +120,12 @@ public class InspectionLifecycle {
     @Transactional(readOnly = true)
     public InspectionResponse view(Long id) {
         return InspectionResponse.from(load(id));
+    }
+
+    // 판정 확정은 웨이퍼를 바꾼 뒤 같은 Lot의 다른 웨이퍼를 읽어 Lot 상태를 정한다.
+    // 웨이퍼부터 잠그면 같은 Lot의 판정끼리 서로의 웨이퍼 잠금을 기다려 데드락이 나므로, Lot 행을 먼저 잠가 순서를 통일한다
+    public void lockLotOf(Long inspectionId) {
+        inspections.findLotIdById(inspectionId).ifPresent(lotId -> lots.findByIdForUpdate(lotId));
     }
 
     public InspectionStatus resultStatus(double confidence) {
