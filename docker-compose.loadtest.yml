@@ -1,0 +1,32 @@
+# 부하 테스트 전용. helm values의 limit에 맞춰 자원을 제한한다
+#   ./gradlew bootJar
+#   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d
+services:
+  mysql:
+    cpus: 1
+    mem_limit: 1g
+    command: ["--slow-query-log=ON", "--long-query-time=0.2", "--slow-query-log-file=/var/lib/mysql/slow.log"]
+
+  ai:
+    cpus: 1.5
+    mem_limit: 3g
+
+  backend:
+    image: eclipse-temurin:17-jre-jammy
+    cpus: 1
+    mem_limit: 1g
+    entrypoint: ["sh", "-c", "exec java -XX:MaxRAMPercentage=75.0 -jar /app/app.jar"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      MINIO_ENDPOINT: http://minio:9000
+      AI_SERVER_URL: http://ai:8000
+      SPRING_PROFILES_ACTIVE: local
+    volumes:
+      - ./build/libs/codecobain-backend-0.0.1-SNAPSHOT.jar:/app/app.jar:ro
+    ports:
+      - "8080:8080"

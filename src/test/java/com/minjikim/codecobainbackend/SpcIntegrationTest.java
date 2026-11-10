@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.cache.type=none")
 @ActiveProfiles("local")
 @Testcontainers(disabledWithoutDocker = true)
 class SpcIntegrationTest {

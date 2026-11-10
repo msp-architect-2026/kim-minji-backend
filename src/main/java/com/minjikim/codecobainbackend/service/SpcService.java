@@ -8,6 +8,7 @@ import com.minjikim.codecobainbackend.exception.WaferException;
 import com.minjikim.codecobainbackend.repository.InspectionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -35,6 +36,7 @@ public class SpcService {
     @Value("${spc.commonality.min-lift}")
     private double minLift;
 
+    @Cacheable(cacheNames = "spcPChart", sync = true)
     public PChartResponse pChart(int days, String defect, String equipment) {
         LocalDateTime from = fromDate(days);
         String defectFilter = normalizeDefect(defect);
@@ -45,6 +47,7 @@ public class SpcService {
         return SpcCalculator.pChart(samples);
     }
 
+    @Cacheable(cacheNames = "spcCommonality", sync = true)
     public List<EquipmentCommonalityResponse> commonality(int days, String defect) {
         LocalDateTime from = fromDate(days);
         String defectFilter = normalizeDefect(defect);

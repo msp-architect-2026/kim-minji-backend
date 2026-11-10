@@ -33,8 +33,11 @@ public class LotDispositionService {
     @Value("${lot.hold.min-judged-wafers}")
     private int minJudgedWafers;
 
-    @Value("${lot.hold.defect-rate-threshold}")
-    private double defectRateThreshold;
+    @Value("${lot.hold.baseline-defect-rate}")
+    private double baselineDefectRate;
+
+    @Value("${lot.hold.significance}")
+    private double significance;
 
     // 웨이퍼 판정이 확정될 때마다 호출한다
     @Transactional
@@ -44,14 +47,28 @@ public class LotDispositionService {
         long defect = counts.getOrDefault(WaferStatus.DEFECT, 0L);
         long judged = defect + counts.getOrDefault(WaferStatus.PASS, 0L);
 
+        // 결함률만 보면 표본이 작을 때 정상 Lot도 우연히 기준을 넘는다(5장 중 2장 = 40%).
+        // 기준 결함률에서 이만큼의 결함이 우연히 나올 확률이 유의수준보다 작을 때만 Hold한다.
         // Release는 엔지니어가 이상 없다고 판단한 것이므로 같은 Lot을 자동으로 다시 잡지 않는다
+        double pValue = binomialTail(judged, defect, baselineDefectRate);
         if (judged >= minJudgedWafers
-                && (double) defect / judged >= defectRateThreshold
+                && pValue < significance
                 && !holds.existsByLotIdAndSource(lotId, HoldSource.AUTO)) {
-            String reason = "결함률 초과: %d/%d".formatted(defect, judged);
+            String reason = "결함률 이상: %d/%d (기준 %.0f%%, p=%.1e)".formatted(defect, judged, baselineDefectRate * 100, pValue);
             placeHold(lotId, HoldSource.AUTO, reason, SYSTEM_OPERATOR, at);
         }
         completeIfFinished(lotId);
+    }
+
+    // P(X >= defects), X ~ Binomial(n, p)
+    static double binomialTail(long n, long defects, double p) {
+        double pmf = Math.pow(1 - p, n);
+        double below = 0;
+        for (long k = 0; k < defects; k++) {
+            below += pmf;
+            pmf = pmf * (n - k) / (k + 1) * p / (1 - p);
+        }
+        return Math.max(0, 1 - below);
     }
 
     @Transactional
