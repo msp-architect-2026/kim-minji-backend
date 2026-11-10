@@ -31,6 +31,9 @@ services:
 
         class Stub(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
+            # 헤더와 본문을 따로 보내면 Nagle + 지연 ACK로 응답마다 약 40ms가 붙는다
+            disable_nagle_algorithm = True
+            wbufsize = 65536
 
             def reply(self, payload):
                 body = json.dumps(payload).encode()
@@ -39,6 +42,7 @@ services:
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+                self.wfile.flush()
 
             def do_GET(self):
                 self.reply({"status": "UP"})
