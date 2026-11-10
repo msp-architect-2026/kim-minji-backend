@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d
 # DB 경로만 측정할 때는 AI 대신 고정 응답 stub을 쓴다 (AI CPU 포화가 DB 병목을 가리지 않도록)
 #   AI_SERVER_URL=http://ai-stub:8000 docker compose -f docker-compose.yml -f docker-compose.loadtest.yml --profile stub up -d mysql minio minio-init ai-stub backend
-# 개선 전후 비교는 각각 빌드한 jar를 BACKEND_JAR로 바꿔 끼운다
+# 개선 전후 비교는 각각 빌드한 jar를 BACKEND_JAR로 바꿔 끼운다 (colima는 홈 디렉터리만 마운트하므로 jar는 홈 아래에 둔다)
 services:
   mysql:
     # 측정 재현성을 위해 패치 버전까지 고정한다
@@ -70,7 +70,12 @@ services:
             def log_message(self, *args):
                 pass
 
-        ThreadingHTTPServer(("", 8000), Stub).serve_forever()
+        # 기본 listen backlog(5)로는 backend가 새 연결을 한꺼번에 열 때 연결이 리셋된다
+        class Server(ThreadingHTTPServer):
+            request_queue_size = 1024
+            daemon_threads = True
+
+        Server(("", 8000), Stub).serve_forever()
 
   backend:
     image: eclipse-temurin:17-jre-jammy
@@ -87,6 +92,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       AI_SERVER_URL: ${AI_SERVER_URL:-http://ai:8000}
       SPRING_PROFILES_ACTIVE: local
+      # 설정 하나만 바꿔 기여도를 볼 때 쓴다. 예: SPRING_APPLICATION_JSON='{"spring.datasource.hikari.auto-commit":true}'
+      SPRING_APPLICATION_JSON: ${SPRING_APPLICATION_JSON:-{}}
     volumes:
       - ${BACKEND_JAR:-./build/libs/codecobain-backend-0.0.1-SNAPSHOT.jar}:/app/app.jar:ro
     ports:
