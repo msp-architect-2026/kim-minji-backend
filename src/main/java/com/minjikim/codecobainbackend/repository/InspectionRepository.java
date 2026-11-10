@@ -22,9 +22,6 @@ public interface InspectionRepository extends JpaRepository<InspectionEntity, Lo
 
     long countByStatus(InspectionStatus status);
 
-    @Query("SELECT w.lot.id FROM InspectionEntity i JOIN i.wafer w WHERE i.id = :id")
-    Optional<Long> findLotIdById(@Param("id") Long id);
-
     @Query("SELECT i.id FROM InspectionEntity i WHERE i.status IN :statuses AND i.updatedAt < :cutoff ORDER BY i.updatedAt")
     List<Long> findStuckIds(@Param("statuses") Collection<InspectionStatus> statuses, @Param("cutoff") LocalDateTime cutoff, Pageable pageable);
 

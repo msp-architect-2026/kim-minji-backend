@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 // 상태 전이마다 별도 트랜잭션으로 커밋한다. MinIO·AI 호출 중에는 DB 트랜잭션을 잡지 않는다
 @Component
@@ -81,10 +82,12 @@ public class InspectionLifecycle {
         return inspection.getImageKey();
     }
 
+    // lotId는 웨이퍼 없는 검사면 null. 트랜잭션 밖에서 구해 넘긴다 (lockLot 주석)
     @Transactional
-    public InspectionResponse complete(Long id, AiPredictionResponse result) {
-        lockLotOf(id);
+    public InspectionResponse complete(Long id, Long lotId, AiPredictionResponse result) {
+        lockLot(lotId);
         InspectionEntity inspection = load(id);
+        requireSameLot(inspection, lotId);
         events.save(inspection.complete(resultStatus(result.getConfidence()), result.getPrediction(),
                 result.getConfidence(), modelVersion, TraceIds.current(), LocalDateTime.now()));
         InspectionResponse response = InspectionResponse.from(inspection);
@@ -122,10 +125,21 @@ public class InspectionLifecycle {
         return InspectionResponse.from(load(id));
     }
 
-    // 판정 확정은 웨이퍼를 바꾼 뒤 같은 Lot의 다른 웨이퍼를 읽어 Lot 상태를 정한다.
-    // 웨이퍼부터 잠그면 같은 Lot의 판정끼리 서로의 웨이퍼 잠금을 기다려 데드락이 나므로, Lot 행을 먼저 잠가 순서를 통일한다
-    public void lockLotOf(Long inspectionId) {
-        inspections.findLotIdById(inspectionId).ifPresent(lotId -> lots.findByIdForUpdate(lotId));
+    // 판정 확정은 웨이퍼를 바꾼 뒤 같은 Lot의 다른 웨이퍼를 읽어 Hold·완료를 정한다. 반드시 트랜잭션의 첫 문장으로 호출한다.
+    // - 웨이퍼부터 잠그면 같은 Lot의 판정끼리 서로의 웨이퍼 잠금을 기다려 데드락이 난다 → Lot 행을 먼저 잠근다
+    // - REPEATABLE READ의 읽기 스냅샷은 트랜잭션의 첫 일반 SELECT에서 만들어진다. 잠그기 전에 무엇이든 읽으면
+    //   잠금을 기다리는 동안 커밋된 다른 판정이 Hold 집계에서 빠진다 → 잠금 전에는 아무것도 읽지 않는다
+    public void lockLot(Long lotId) {
+        if (lotId != null) {
+            lots.findByIdForUpdate(lotId).orElseThrow(() -> new WaferException(ErrorCode.LOT_NOT_FOUND));
+        }
+    }
+
+    public void requireSameLot(InspectionEntity inspection, Long lotId) {
+        Long actual = inspection.getWafer() == null ? null : inspection.getWafer().getLot().getId();
+        if (!Objects.equals(actual, lotId)) {
+            throw new IllegalStateException("검사 %d의 Lot은 %s인데 %s을 잠갔습니다".formatted(inspection.getId(), actual, lotId));
+        }
     }
 
     public InspectionStatus resultStatus(double confidence) {
