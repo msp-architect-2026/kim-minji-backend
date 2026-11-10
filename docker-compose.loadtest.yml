@@ -1,8 +1,13 @@
 # 부하 테스트 전용. helm values의 limit에 맞춰 자원을 제한한다
 #   ./gradlew bootJar
 #   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d
+# DB 경로만 측정할 때는 AI 대신 고정 응답 stub을 쓴다 (AI CPU 포화가 DB 병목을 가리지 않도록)
+#   AI_SERVER_URL=http://ai-stub:8000 docker compose -f docker-compose.yml -f docker-compose.loadtest.yml --profile stub up -d mysql minio minio-init ai-stub backend
+# 개선 전후 비교는 각각 빌드한 jar를 BACKEND_JAR로 바꿔 끼운다 (colima는 홈 디렉터리만 마운트하므로 jar는 홈 아래에 둔다)
 services:
   mysql:
+    # 측정 재현성을 위해 패치 버전까지 고정한다
+    image: mysql:8.0.46
     cpus: 1
     mem_limit: 1g
     command: ["--slow-query-log=ON", "--long-query-time=0.2", "--slow-query-log-file=/var/lib/mysql/slow.log"]
@@ -10,6 +15,67 @@ services:
   ai:
     cpus: 1.5
     mem_limit: 3g
+
+  # object_key(업로드 파일명 포함)에 defect가 있으면 결함, uncertain이면 리뷰 대상(낮은 신뢰도), 그 외는 양품
+  ai-stub:
+    image: python:3.12-alpine
+    profiles: ["stub"]
+    cpus: 0.5
+    mem_limit: 128m
+    command:
+      - python
+      - -c
+      - |
+        import json
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Stub(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+            # 헤더와 본문을 따로 보내면 Nagle + 지연 ACK로 응답마다 약 40ms가 붙는다
+            disable_nagle_algorithm = True
+            wbufsize = 65536
+
+            def reply(self, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                self.wfile.flush()
+
+            def do_GET(self):
+                self.reply({"status": "UP"})
+
+            # backend의 RestTemplate은 본문을 chunked로 보낸다
+            def body(self):
+                if self.headers.get("Content-Length"):
+                    return self.rfile.read(int(self.headers["Content-Length"]))
+                data = b""
+                while (size := int(self.rfile.readline().strip(), 16)) > 0:
+                    data += self.rfile.read(size)
+                    self.rfile.readline()
+                self.rfile.readline()
+                return data
+
+            def do_POST(self):
+                key = json.loads(self.body()).get("object_key", "")
+                if "defect" in key:
+                    self.reply({"prediction": "Scratch", "confidence": 0.95})
+                elif "uncertain" in key:
+                    self.reply({"prediction": "Scratch", "confidence": 0.5})
+                else:
+                    self.reply({"prediction": "none", "confidence": 0.95})
+
+            def log_message(self, *args):
+                pass
+
+        # 기본 listen backlog(5)로는 backend가 새 연결을 한꺼번에 열 때 연결이 리셋된다
+        class Server(ThreadingHTTPServer):
+            request_queue_size = 1024
+            daemon_threads = True
+
+        Server(("", 8000), Stub).serve_forever()
 
   backend:
     image: eclipse-temurin:17-jre-jammy
@@ -24,9 +90,11 @@ services:
     environment:
       DB_URL: jdbc:mysql://mysql:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       MINIO_ENDPOINT: http://minio:9000
-      AI_SERVER_URL: http://ai:8000
+      AI_SERVER_URL: ${AI_SERVER_URL:-http://ai:8000}
       SPRING_PROFILES_ACTIVE: local
+      # 설정 하나만 바꿔 기여도를 볼 때 쓴다. 예: SPRING_APPLICATION_JSON='{"spring.datasource.hikari.auto-commit":true}'
+      SPRING_APPLICATION_JSON: ${SPRING_APPLICATION_JSON:-{}}
     volumes:
-      - ./build/libs/codecobain-backend-0.0.1-SNAPSHOT.jar:/app/app.jar:ro
+      - ${BACKEND_JAR:-./build/libs/codecobain-backend-0.0.1-SNAPSHOT.jar}:/app/app.jar:ro
     ports:
       - "8080:8080"
