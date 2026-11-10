@@ -109,8 +109,8 @@ public class SimulationService {
 
     private void recordInspection(WaferEntity wafer, int slotNo, String prediction, double confidence, LocalDateTime at) {
         String traceId = TraceIds.current();
-        InspectionEntity inspection = inspections.save(new InspectionEntity(wafer, "simulated-%02d.png".formatted(slotNo), null, at));
-        events.save(inspection.receivedEvent(traceId));
+        InspectionEntity inspection = inspections.save(new InspectionEntity(wafer, "simulated-%02d.png".formatted(slotNo), null, traceId, at));
+        events.save(inspection.receivedEvent());
         events.save(inspection.markUploaded("simulated/%d/%02d.png".formatted(wafer.getLot().getId(), slotNo), traceId, at.plusSeconds(1)));
         events.save(inspection.startInference(traceId, at.plusSeconds(1)));
         events.save(inspection.complete(lifecycle.resultStatus(confidence), prediction, confidence,

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.Optional;
 
 // 상태 전이마다 별도 트랜잭션으로 커밋한다. MinIO·AI 호출 중에는 DB 트랜잭션을 잡지 않는다
 @Component
@@ -37,8 +38,19 @@ public class InspectionLifecycle {
     @Value("${ai.model-version}")
     private String modelVersion;
 
+    // replayed: 같은 Idempotency-Key로 이미 접수된 검사를 돌려준 경우
+    public record Started(Long inspectionId, boolean replayed) {
+    }
+
+    // 재전송 확인도 같은 트랜잭션에서 한다 (트랜잭션 밖 조회는 커넥션 반납 때 롤백이 한 번 더 나간다)
     @Transactional
-    public Long beginForWafer(Long lotId, int slotNo, String filename, String idempotencyKey) {
+    public Started beginForWafer(Long lotId, int slotNo, String filename, String idempotencyKey) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<InspectionEntity> existing = inspections.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                return new Started(existing.get().getId(), true);
+            }
+        }
         WaferEntity wafer = wafers.findByLotIdAndSlotNo(lotId, slotNo)
                 .orElseThrow(() -> new WaferException(ErrorCode.WAFER_NOT_FOUND));
         if (wafer.getLot().getStatus() != LotStatus.IN_PROGRESS) {
@@ -50,7 +62,7 @@ public class InspectionLifecycle {
         if (wafer.getStatus() == WaferStatus.REVIEW) {
             throw new WaferException(ErrorCode.INSPECTION_NEEDS_REVIEW);
         }
-        return begin(wafer, filename, idempotencyKey);
+        return new Started(begin(wafer, filename, idempotencyKey), false);
     }
 
     @Transactional
@@ -60,19 +72,18 @@ public class InspectionLifecycle {
 
     private Long begin(WaferEntity wafer, String filename, String idempotencyKey) {
         InspectionEntity inspection = inspections.saveAndFlush(
-                new InspectionEntity(wafer, filename, idempotencyKey, LocalDateTime.now()));
-        events.save(inspection.receivedEvent(TraceIds.current()));
+                new InspectionEntity(wafer, filename, idempotencyKey, TraceIds.current(), LocalDateTime.now()));
+        events.save(inspection.receivedEvent());
         return inspection.getId();
     }
 
+    // 업로드 완료와 추론 시작 사이에는 외부 호출이 없으므로 한 트랜잭션으로 묶는다. 전이 이벤트는 각각 남긴다
     @Transactional
-    public void markUploaded(Long id, String imageKey) {
-        events.save(load(id).markUploaded(imageKey, TraceIds.current(), LocalDateTime.now()));
-    }
-
-    @Transactional
-    public void startInference(Long id) {
-        events.save(load(id).startInference(TraceIds.current(), LocalDateTime.now()));
+    public void markUploadedAndStartInference(Long id, String imageKey) {
+        InspectionEntity inspection = load(id);
+        LocalDateTime now = LocalDateTime.now();
+        events.save(inspection.markUploaded(imageKey, TraceIds.current(), now));
+        events.save(inspection.startInference(TraceIds.current(), now));
     }
 
     @Transactional
@@ -151,6 +162,6 @@ public class InspectionLifecycle {
     }
 
     private InspectionEntity load(Long id) {
-        return inspections.findById(id).orElseThrow(() -> new WaferException(ErrorCode.INSPECTION_NOT_FOUND));
+        return inspections.findByIdWithWafer(id).orElseThrow(() -> new WaferException(ErrorCode.INSPECTION_NOT_FOUND));
     }
 }

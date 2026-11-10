@@ -51,7 +51,7 @@ public class InspectionReviewService {
 
     private InspectionResponse confirm(Long id, Long lotId, ReviewRequest request) {
         lifecycle.lockLot(lotId);
-        InspectionEntity inspection = inspections.findById(id)
+        InspectionEntity inspection = inspections.findByIdWithWafer(id)
                 .orElseThrow(() -> new WaferException(ErrorCode.INSPECTION_NOT_FOUND));
         lifecycle.requireSameLot(inspection, lotId);
         if (inspection.getStatus() != InspectionStatus.NEED_REVIEW) {

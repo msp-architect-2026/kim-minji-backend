@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -39,6 +40,8 @@ class SpcIntegrationTest {
     @Autowired private SimulationService simulationService;
     @Autowired private SpcService spcService;
     @Autowired private JdbcTemplate jdbc;
+    // 커넥션이 autocommit=false라 트랜잭션 밖 쓰기는 커밋되지 않는다
+    @Autowired private TransactionTemplate tx;
 
     @org.junit.jupiter.api.BeforeEach
     void seedOnce() {
@@ -74,11 +77,11 @@ class SpcIntegrationTest {
         long before = spcService.pChart(15, null, null).points().stream().mapToLong(PChartResponse.Point::defects).sum();
         Long id = jdbc.queryForObject("""
                 SELECT MAX(id) FROM inspection WHERE status = 'DONE' AND final_prediction = 'none'""", Long.class);
-        jdbc.update("UPDATE inspection SET final_prediction = 'Scratch' WHERE id = ?", id);
+        tx.executeWithoutResult(status -> jdbc.update("UPDATE inspection SET final_prediction = 'Scratch' WHERE id = ?", id));
 
         long after = spcService.pChart(15, null, null).points().stream().mapToLong(PChartResponse.Point::defects).sum();
 
-        jdbc.update("UPDATE inspection SET final_prediction = 'none' WHERE id = ?", id);
+        tx.executeWithoutResult(status -> jdbc.update("UPDATE inspection SET final_prediction = 'none' WHERE id = ?", id));
         assertThat(after).isEqualTo(before + 1);
     }
 

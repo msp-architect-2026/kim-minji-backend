@@ -48,10 +48,12 @@ public class InspectionEntity {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public InspectionEntity(WaferEntity wafer, String filename, String idempotencyKey, LocalDateTime now) {
+    // traceId를 INSERT 전에 넣어야 저장 직후 UPDATE가 한 번 더 나가지 않는다
+    public InspectionEntity(WaferEntity wafer, String filename, String idempotencyKey, String traceId, LocalDateTime now) {
         this.wafer = wafer;
         this.filename = filename;
         this.idempotencyKey = idempotencyKey;
+        this.traceId = traceId;
         this.status = InspectionStatus.RECEIVED;
         this.attempt = 1;
         this.createdAt = now;
@@ -61,8 +63,7 @@ public class InspectionEntity {
         }
     }
 
-    public InspectionEventEntity receivedEvent(String traceId) {
-        this.traceId = traceId;
+    public InspectionEventEntity receivedEvent() {
         return new InspectionEventEntity(this, null, status, null, traceId, createdAt);
     }
 
