@@ -50,16 +50,16 @@ public class InspectionService {
         log.info("웨이퍼 검사 요청 수신: lotId={}, slotNo={}", lotId, slotNo);
         imageFileValidator.validate(file);
 
-        Optional<InspectionResponse> replay = findByIdempotencyKey(idempotencyKey);
-        if (replay.isPresent()) {
-            return replay.get();
-        }
-        Long id;
+        InspectionLifecycle.Started started;
         try {
-            id = lifecycle.beginForWafer(lotId, slotNo, file.getOriginalFilename(), idempotencyKey);
+            started = lifecycle.beginForWafer(lotId, slotNo, file.getOriginalFilename(), idempotencyKey);
         } catch (DataIntegrityViolationException e) {
             // 같은 키의 요청이 동시에 들어와 다른 쪽이 먼저 저장한 경우
             return findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
+        }
+        Long id = started.inspectionId();
+        if (started.replayed()) {
+            return lifecycle.view(id);
         }
         BusinessContext.bind(lotId, id);
         return uploadAndInfer(id, lotId, file);
@@ -96,8 +96,7 @@ public class InspectionService {
             lifecycle.fail(id, errorCodeOf(e));
             throw e;
         }
-        lifecycle.markUploaded(id, imageKey);
-        lifecycle.startInference(id);
+        lifecycle.markUploadedAndStartInference(id, imageKey);
         return infer(id, lotId, imageKey);
     }
 

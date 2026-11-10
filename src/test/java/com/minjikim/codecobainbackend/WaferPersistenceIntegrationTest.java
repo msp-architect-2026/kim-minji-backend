@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -36,13 +37,15 @@ class WaferPersistenceIntegrationTest {
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
 
     @Autowired private JdbcTemplate jdbc;
+    // 커넥션이 autocommit=false라 트랜잭션 밖 쓰기는 커밋되지 않는다
+    @Autowired private TransactionTemplate tx;
     @Autowired private StatsService statsService;
 
     private final LocalDate today = LocalDate.now();
 
     @BeforeEach
     void seed() {
-        jdbc.update("DELETE FROM inspection");
+        tx.executeWithoutResult(status -> jdbc.update("DELETE FROM inspection"));
         insert("Center", 0.8, today.atTime(10, 0));
         insert("none", 1.0, today.atTime(11, 0));
         insert(null, null, today.atTime(12, 0));
@@ -122,9 +125,9 @@ class WaferPersistenceIntegrationTest {
     }
 
     private void insert(String prediction, Double confidence, LocalDateTime createdAt) {
-        jdbc.update("""
+        tx.executeWithoutResult(status -> jdbc.update("""
                 INSERT INTO inspection (filename, image_key, status, prediction, final_prediction, confidence, attempt, version, created_at, updated_at)
                 VALUES ('f', 'p', ?, ?, ?, ?, 1, 0, ?, ?)""",
-                prediction == null ? "FAILED" : "DONE", prediction, prediction, confidence, createdAt, createdAt);
+                prediction == null ? "FAILED" : "DONE", prediction, prediction, confidence, createdAt, createdAt));
     }
 }

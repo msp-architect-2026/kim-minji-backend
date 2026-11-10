@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -61,6 +62,8 @@ class FailureAnalysisIntegrationTest {
     @Autowired private LotDispositionService disposition;
     @Autowired private MeterRegistry registry;
     @Autowired private JdbcTemplate jdbc;
+    // 커넥션이 autocommit=false라 트랜잭션 밖 쓰기는 커밋되지 않는다
+    @Autowired private TransactionTemplate tx;
     @MockBean private MinioUploader uploader;
     @MockBean private AiAnalysisService ai;
 
@@ -174,6 +177,10 @@ class FailureAnalysisIntegrationTest {
     }
 
     private Long insertActiveInspection(Long lotId, int slot, int minutesAgo) {
+        return tx.execute(status -> insertActiveInspectionInTx(lotId, slot, minutesAgo));
+    }
+
+    private Long insertActiveInspectionInTx(Long lotId, int slot, int minutesAgo) {
         Long waferId = jdbc.queryForObject("SELECT id FROM wafer WHERE lot_id = ? AND slot_no = ?", Long.class, lotId, slot);
         LocalDateTime updatedAt = LocalDateTime.now().minusMinutes(minutesAgo);
         jdbc.update("UPDATE wafer SET status = 'INSPECTING' WHERE id = ?", waferId);

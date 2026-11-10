@@ -20,6 +20,10 @@ public interface InspectionRepository extends JpaRepository<InspectionEntity, Lo
 
     Optional<InspectionEntity> findByIdempotencyKey(String idempotencyKey);
 
+    // 상태 전이는 웨이퍼 상태도 함께 바꾸므로 웨이퍼를 한 번에 읽는다
+    @Query("SELECT i FROM InspectionEntity i LEFT JOIN FETCH i.wafer WHERE i.id = :id")
+    Optional<InspectionEntity> findByIdWithWafer(@Param("id") Long id);
+
     long countByStatus(InspectionStatus status);
 
     @Query("SELECT i.id FROM InspectionEntity i WHERE i.status IN :statuses AND i.updatedAt < :cutoff ORDER BY i.updatedAt")
